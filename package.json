@@ -1,0 +1,95 @@
+{
+  "name": "copilot-memory",
+  "displayName": "Copilot Memory",
+  "description": "Persistent local memory for GitHub Copilot Chat across sessions",
+  "version": "0.0.1",
+  "publisher": "local",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.93.0"
+  },
+  "categories": [
+    "AI",
+    "Chat"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "chatParticipants": [
+      {
+        "id": "copilot-memory.memory",
+        "name": "memory",
+        "fullName": "Copilot Memory",
+        "description": "Search and save persistent memories across sessions",
+        "isSticky": false,
+        "commands": [
+          {
+            "name": "save",
+            "description": "Save information to your personal memory"
+          },
+          {
+            "name": "search",
+            "description": "Search your past memories"
+          },
+          {
+            "name": "project-save",
+            "description": "Save project knowledge (shared with team)"
+          },
+          {
+            "name": "clear",
+            "description": "Clear all memories"
+          }
+        ]
+      }
+    ],
+    "commands": [
+      {
+        "command": "copilot-memory.saveSelection",
+        "title": "Copilot Memory: Save Selection to Memory"
+      },
+      {
+        "command": "copilot-memory.search",
+        "title": "Copilot Memory: Search Memories"
+      },
+      {
+        "command": "copilot-memory.showAll",
+        "title": "Copilot Memory: Show All Memories"
+      },
+      {
+        "command": "copilot-memory.clearAll",
+        "title": "Copilot Memory: Clear All Memories"
+      }
+    ],
+    "configuration": {
+      "title": "Copilot Memory",
+      "properties": {
+        "copilotMemory.maxContextItems": {
+          "type": "number",
+          "default": 5,
+          "description": "Maximum number of memories to include in context"
+        },
+        "copilotMemory.storageDir": {
+          "type": "string",
+          "default": "",
+          "description": "Custom storage directory (default: ~/.copilot-memory)"
+        },
+        "copilotMemory.debug": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable debug logging to output channel"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "tsc --noEmit",
+    "package": "npx @vscode/vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.93.0",
+    "typescript": "^5.5.0"
+  }
+}

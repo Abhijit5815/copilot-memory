@@ -110,26 +110,6 @@ src/
     settings.ts
 ```
 
-## Git Setup and Push
-
-If this is a new repo, run:
-
-```bash
-git init -b main
-git add .
-git commit -m "Initial commit: Copilot Memory extension"
-git remote add origin <your-repo-url>
-git push -u origin main
-```
-
-If the remote already exists:
-
-```bash
-git add .
-git commit -m "Update README and project setup"
-git push
-```
-
 ## License
 
 MIT

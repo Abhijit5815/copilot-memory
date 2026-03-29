@@ -107,22 +107,6 @@ export class MemoryStore {
     return scored.slice(0, limit);
   }
 
-  /** Get top memories for context injection (most recent + most relevant) */
-  getProfile(containerTag: string, query: string, limit = 5): SearchResult[] {
-    const memories = this.getAll(containerTag);
-    if (memories.length === 0) return [];
-
-    if (query.trim()) {
-      return this.search(query, containerTag, limit);
-    }
-
-    // No query: return most recent
-    const sorted = [...memories].sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    );
-    return sorted.slice(0, limit).map((memory) => ({ memory, score: 1 }));
-  }
-
   delete(id: string, containerTag: string): boolean {
     const memories = this.getAll(containerTag);
     const filtered = memories.filter((m) => m.id !== id);
@@ -197,15 +181,4 @@ function scoreMemory(memory: Memory, queryTokens: string[]): number {
     : 0;
 
   return termScore * 0.65 + recencyScore * 0.25 + projectBonus + 0.1 * (termScore > 0 ? 1 : 0);
-}
-
-/** Deduplicate results by content */
-export function dedupeResults(results: SearchResult[]): SearchResult[] {
-  const seen = new Set<string>();
-  return results.filter((r) => {
-    const key = r.memory.content.toLowerCase().trim();
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
 }

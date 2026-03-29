@@ -10,7 +10,7 @@
     "url": "https://github.com/local/copilot-memory"
   },
   "engines": {
-    "vscode": "^1.93.0"
+    "vscode": "^1.96.0"
   },
   "categories": [
     "AI",
@@ -19,31 +19,75 @@
   "main": "./out/extension.js",
   "activationEvents": [],
   "contributes": {
-    "chatParticipants": [
+    "languageModelTools": [
       {
-        "id": "copilot-memory.memory",
-        "name": "memory",
-        "fullName": "Copilot Memory",
-        "description": "Search and save persistent memories across sessions",
-        "isSticky": false,
-        "commands": [
-          {
-            "name": "save",
-            "description": "Save information to your personal memory"
+        "name": "copilot-memory_save",
+        "displayName": "Save Memory",
+        "description": "Save information to persistent local memory. Use this to remember decisions, solutions, patterns, architecture notes, or anything worth recalling later.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "content": {
+              "type": "string",
+              "description": "The information to save"
+            },
+            "scope": {
+              "type": "string",
+              "enum": ["personal", "project"],
+              "description": "personal = your notes across all repos, project = scoped to current repo"
+            }
           },
-          {
-            "name": "search",
-            "description": "Search your past memories"
+          "required": ["content"]
+        },
+        "canBeReferencedInPrompt": true
+      },
+      {
+        "name": "copilot-memory_search",
+        "displayName": "Search Memory",
+        "description": "Search saved memories for relevant context. Searches both personal and project-scoped memories.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "Search query to find relevant memories"
+            }
           },
-          {
-            "name": "project-save",
-            "description": "Save project knowledge (shared with team)"
-          },
-          {
-            "name": "clear",
-            "description": "Clear all memories"
+          "required": ["query"]
+        },
+        "canBeReferencedInPrompt": true
+      },
+      {
+        "name": "copilot-memory_list",
+        "displayName": "List Memories",
+        "description": "List all saved memories, optionally filtered by scope.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "scope": {
+              "type": "string",
+              "enum": ["personal", "project"],
+              "description": "Filter by scope, or omit to list all"
+            }
           }
-        ]
+        },
+        "canBeReferencedInPrompt": true
+      },
+      {
+        "name": "copilot-memory_delete",
+        "displayName": "Delete Memory",
+        "description": "Delete a specific memory by its ID.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "The UUID of the memory to delete"
+            }
+          },
+          "required": ["id"]
+        },
+        "canBeReferencedInPrompt": true
       }
     ],
     "commands": [
@@ -93,7 +137,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "@types/vscode": "^1.93.0",
+    "@types/vscode": "^1.96.0",
     "typescript": "^5.5.0"
   }
 }

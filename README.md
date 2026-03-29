@@ -1,135 +1,80 @@
 # Copilot Memory
 
-Persistent local memory for GitHub Copilot Chat in VS Code.
+Persistent local memory for GitHub Copilot Chat. Copilot can save and recall information across sessions automatically — no special commands needed. All data stays on your machine.
 
-This extension lets you save personal notes and project knowledge, then retrieve them later with `@memory` in chat. Data is stored locally on your machine.
-
-## Why this project
-
-- Works with GitHub Copilot Chat in VS Code
-- Stores memory locally (no external API)
-- Supports both personal memory and repository-scoped knowledge
-
-## Features
-
-- Chat participant: `@memory`
-- Save and search memory from chat commands
-- Quick commands from Command Palette
-- JSONL local storage in `~/.copilot-memory`
-- Lightweight text search with recency-aware ranking
-
-## Quick Start
-
-### Option A — Install as a real extension (recommended for testing)
-
-This builds and installs the extension directly into VS Code, exactly like a published extension. No dev mode needed.
+## Install
 
 ```bash
 bash install-local.sh
 ```
 
-Then **restart VS Code**. The extension will be active in all windows.
+Restart VS Code. Done.
 
-To update after making changes, just run the script again.
+> Requires Node.js and `code` CLI on your PATH.
 
-> **Requirements:** Node.js and `code` CLI must be on your PATH.
-> Install `code` CLI via VS Code: `Cmd+Shift+P` → `Shell Command: Install 'code' command in PATH`.
+## Usage
 
-To uninstall: go to the Extensions panel → find **Copilot Memory** → Uninstall.
+Just chat with Copilot normally:
 
----
+```
+"Remember that our API uses rate limiting of 100 req/min"
+→ Copilot saves it automatically
 
-### Option B — Run in dev mode (for active development)
-
-### 1. Install dependencies
-
-```bash
-npm install
+"What did we decide about rate limiting?"
+→ Copilot searches your memories and uses them in its answer
 ```
 
-### 2. Compile TypeScript
+To force a tool, type `#` in chat and pick one:
 
-```bash
-npm run compile
+```
+#copilot-memory_search auth flow
 ```
 
-### 3. Run extension in dev mode
+### Tools
 
-1. Open this folder in VS Code.
-2. Press `F5`.
-3. A new Extension Development Host window opens.
-4. Open Copilot Chat and use `@memory`.
-
-## Chat Usage
-
-| Action | Command |
+| Tool | What it does |
 |---|---|
-| Save personal memory | `@memory /save auth uses JWT with 24h expiry` |
-| Save project memory | `@memory /project-save API routes use withAuth wrapper` |
-| Search memories | `@memory /search authentication flow` |
-| Clear memory | `@memory /clear` |
-| Auto-search prompt | `@memory how did we implement caching?` |
+| `copilot-memory_save` | Save a note (personal or project-scoped) |
+| `copilot-memory_search` | Search saved memories |
+| `copilot-memory_list` | List all memories |
+| `copilot-memory_delete` | Delete a memory by ID |
 
-## Command Palette Usage
+### Command Palette
 
-Run with `Cmd+Shift+P`:
+`Cmd+Shift+P`:
 
-- `Copilot Memory: Save Selection to Memory`
-- `Copilot Memory: Search Memories`
-- `Copilot Memory: Show All Memories`
-- `Copilot Memory: Clear All Memories`
+- **Save Selection to Memory** — save highlighted code/text
+- **Search Memories** — keyword search
+- **Show All Memories** — view everything
+- **Clear All Memories** — wipe with confirmation
 
-## Local Storage Layout
+## Storage
 
-```text
-~/.copilot-memory/
-  personal_<hash>/
-    memories.jsonl
-  repo_<git-repo-name>/
-    memories.jsonl
+Memories persist forever in `~/.copilot-memory/` as JSONL files:
+
 ```
-
-Example `memories.jsonl` line:
-
-```json
-{
-  "id": "uuid",
-  "content": "auth uses JWT tokens with 24h expiry",
-  "metadata": { "type": "manual", "project": "my-app" },
-  "createdAt": "2026-03-29T12:00:00.000Z"
-}
+~/.copilot-memory/
+  personal_<hash>/memories.jsonl      ← your notes (all repos)
+  repo_<git-repo-name>/memories.jsonl ← project-specific knowledge
 ```
 
 ## Settings
 
 | Setting | Default | Description |
 |---|---|---|
-| `copilotMemory.maxContextItems` | `5` | Maximum results returned in context |
-| `copilotMemory.storageDir` | `~/.copilot-memory` | Override default storage path |
-| `copilotMemory.debug` | `false` | Enable debug output channel |
+| `copilotMemory.maxContextItems` | `5` | Max results returned per search |
+| `copilotMemory.storageDir` | `~/.copilot-memory` | Storage directory |
+| `copilotMemory.debug` | `false` | Debug logging |
 
-## Development Commands
+## Development
 
 ```bash
-npm run compile
-npm run watch
-npm run lint
-npm run package
+npm install
+npm run compile   # build
+npm run watch     # build on change
 ```
 
-## Project Structure
-
-```text
-src/
-  extension.ts
-  participant.ts
-  lib/
-    memory-store.ts
-    container-tag.ts
-    format-context.ts
-    git-utils.ts
-    settings.ts
-```
+Press `F5` in VS Code to launch the extension in dev mode.
 
 ## License
 

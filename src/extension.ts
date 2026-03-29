@@ -1,106 +1,86 @@
 import * as vscode from 'vscode';
-import { MemoryStore } from './lib/memory-store';
-import { getSettings, debugLog, getOutputChannel } from './lib/settings';
+import { MemoryStore, Memory } from './lib/memory-store';
+import { getSettings, getOutputChannel } from './lib/settings';
 import {
   getPersonalContainerTag,
   getRepoContainerTag,
   getProjectName,
 } from './lib/container-tag';
-import { formatContextBlock, formatMemoryDetail } from './lib/format-context';
-import { registerParticipant } from './participant';
 
 export function activate(context: vscode.ExtensionContext) {
   const settings = getSettings();
   const store = new MemoryStore(settings.storageDir || undefined);
 
-  debugLog('Extension activated');
+  // --- Language Model Tools (Copilot calls these in any conversation) ---
 
-  // Chat participant
-  registerParticipant(context, store);
+  context.subscriptions.push(
+    vscode.lm.registerTool('copilot-memory_save', new SaveMemoryTool(store)),
+    vscode.lm.registerTool('copilot-memory_search', new SearchMemoryTool(store)),
+    vscode.lm.registerTool('copilot-memory_list', new ListMemoriesTool(store)),
+    vscode.lm.registerTool('copilot-memory_delete', new DeleteMemoryTool(store)),
+  );
 
-  // Command: save selected text as memory
+  // --- Command Palette ---
+
   context.subscriptions.push(
     vscode.commands.registerCommand('copilot-memory.saveSelection', async () => {
       const editor = vscode.window.activeTextEditor;
-      if (!editor) {
-        vscode.window.showWarningMessage('No active editor.');
-        return;
-      }
+      if (!editor) return vscode.window.showWarningMessage('No active editor.');
 
       const selection = editor.document.getText(editor.selection);
-      if (!selection.trim()) {
-        vscode.window.showWarningMessage('No text selected.');
-        return;
-      }
+      if (!selection.trim()) return vscode.window.showWarningMessage('No text selected.');
 
       const cwd = getWorkspaceCwd();
-      const containerTag = getPersonalContainerTag(cwd);
-      const projectName = getProjectName(cwd);
-
-      store.add(selection, containerTag, {
+      store.add(selection, getPersonalContainerTag(cwd), {
         type: 'manual',
-        project: projectName,
+        project: getProjectName(cwd),
       });
-
-      vscode.window.showInformationMessage(
-        `Memory saved to project: ${projectName}`,
-      );
+      vscode.window.showInformationMessage(`Memory saved (${getProjectName(cwd)})`);
     }),
   );
 
-  // Command: search memories via input box
   context.subscriptions.push(
     vscode.commands.registerCommand('copilot-memory.search', async () => {
       const query = await vscode.window.showInputBox({
         prompt: 'Search your memories',
-        placeHolder: 'e.g., auth flow, bug fix, architecture',
+        placeHolder: 'e.g., auth flow, bug fix',
       });
-
       if (!query) return;
 
       const cwd = getWorkspaceCwd();
-      const personalTag = getPersonalContainerTag(cwd);
-      const repoTag = getRepoContainerTag(cwd);
+      const results = [
+        ...store.search(query, getPersonalContainerTag(cwd), 5),
+        ...store.search(query, getRepoContainerTag(cwd), 5),
+      ];
 
-      const personalResults = store.search(query, personalTag, 5);
-      const repoResults = store.search(query, repoTag, 5);
-
-      const content = formatContextBlock(personalResults, repoResults);
+      const content = results.length
+        ? results.map(r => `- ${r.memory.content} _(${new Date(r.memory.createdAt).toLocaleDateString()})_`).join('\n')
+        : 'No memories found.';
 
       const doc = await vscode.workspace.openTextDocument({
-        content: `# Memory Search: "${query}"\n\n${content}`,
+        content: `# Search: "${query}"\n\n${content}`,
         language: 'markdown',
       });
       await vscode.window.showTextDocument(doc, { preview: true });
     }),
   );
 
-  // Command: show all memories
   context.subscriptions.push(
     vscode.commands.registerCommand('copilot-memory.showAll', async () => {
       const cwd = getWorkspaceCwd();
-      const personalTag = getPersonalContainerTag(cwd);
-      const repoTag = getRepoContainerTag(cwd);
+      const personal = store.getAll(getPersonalContainerTag(cwd));
+      const repo = store.getAll(getRepoContainerTag(cwd));
 
-      const personal = store.getAll(personalTag);
-      const repo = store.getAll(repoTag);
+      const format = (m: Memory) =>
+        `- **[${m.metadata.type}]** ${m.content} _(${new Date(m.createdAt).toLocaleDateString()}, ${m.metadata.project || 'unknown'})_`;
 
-      const lines: string[] = [
+      const lines = [
         `# All Memories — ${getProjectName(cwd)}`,
-        '',
-        `## Personal (${personal.length})`,
-        '',
+        `\n## Personal (${personal.length})`,
+        ...personal.map(format),
+        `\n## Project (${repo.length})`,
+        ...repo.map(format),
       ];
-
-      for (const m of personal) {
-        lines.push(formatMemoryDetail(m), '');
-      }
-
-      lines.push(`## Project Knowledge (${repo.length})`, '');
-
-      for (const m of repo) {
-        lines.push(formatMemoryDetail(m), '');
-      }
 
       const doc = await vscode.workspace.openTextDocument({
         content: lines.join('\n'),
@@ -110,42 +90,136 @@ export function activate(context: vscode.ExtensionContext) {
     }),
   );
 
-  // Command: clear all memories (with confirmation)
   context.subscriptions.push(
     vscode.commands.registerCommand('copilot-memory.clearAll', async () => {
       const choice = await vscode.window.showWarningMessage(
         'Clear all memories for this project?',
         { modal: true },
-        'Clear Personal',
-        'Clear Project',
-        'Clear Both',
+        'Clear Personal', 'Clear Project', 'Clear Both',
       );
-
       if (!choice) return;
 
       const cwd = getWorkspaceCwd();
-      const personalTag = getPersonalContainerTag(cwd);
-      const repoTag = getRepoContainerTag(cwd);
-
       let cleared = 0;
-      if (choice === 'Clear Personal' || choice === 'Clear Both') {
-        cleared += store.clear(personalTag);
-      }
-      if (choice === 'Clear Project' || choice === 'Clear Both') {
-        cleared += store.clear(repoTag);
-      }
-
+      if (choice !== 'Clear Project') cleared += store.clear(getPersonalContainerTag(cwd));
+      if (choice !== 'Clear Personal') cleared += store.clear(getRepoContainerTag(cwd));
       vscode.window.showInformationMessage(`Cleared ${cleared} memories.`);
     }),
   );
 
-  // Register output channel for disposal
   context.subscriptions.push(getOutputChannel());
 }
 
 export function deactivate() {}
 
 function getWorkspaceCwd(): string {
-  const folders = vscode.workspace.workspaceFolders;
-  return folders?.[0]?.uri.fsPath || process.cwd();
+  return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
+}
+
+// --- Language Model Tool implementations ---
+
+interface SaveInput { content: string; scope?: 'personal' | 'project' }
+
+class SaveMemoryTool implements vscode.LanguageModelTool<SaveInput> {
+  constructor(private store: MemoryStore) {}
+
+  async invoke(
+    options: vscode.LanguageModelToolInvocationOptions<SaveInput>,
+    _token: vscode.CancellationToken,
+  ): Promise<vscode.LanguageModelToolResult> {
+    const { content, scope = 'personal' } = options.input;
+    const cwd = getWorkspaceCwd();
+    const projectName = getProjectName(cwd);
+    const containerTag = scope === 'project'
+      ? getRepoContainerTag(cwd)
+      : getPersonalContainerTag(cwd);
+    const type = scope === 'project' ? 'project-knowledge' as const : 'manual' as const;
+
+    const memory = this.store.add(content, containerTag, { type, project: projectName });
+
+    return new vscode.LanguageModelToolResult([
+      new vscode.LanguageModelTextPart(
+        JSON.stringify({ saved: true, id: memory.id, scope, project: projectName }),
+      ),
+    ]);
+  }
+}
+
+interface SearchInput { query: string }
+
+class SearchMemoryTool implements vscode.LanguageModelTool<SearchInput> {
+  constructor(private store: MemoryStore) {}
+
+  async invoke(
+    options: vscode.LanguageModelToolInvocationOptions<SearchInput>,
+    _token: vscode.CancellationToken,
+  ): Promise<vscode.LanguageModelToolResult> {
+    const { query } = options.input;
+    const cwd = getWorkspaceCwd();
+    const limit = getSettings().maxContextItems;
+
+    const personal = this.store.search(query, getPersonalContainerTag(cwd), limit);
+    const project = this.store.search(query, getRepoContainerTag(cwd), limit);
+
+    const results = [
+      ...personal.map(r => ({ ...r.memory, scope: 'personal', score: r.score })),
+      ...project.map(r => ({ ...r.memory, scope: 'project', score: r.score })),
+    ];
+
+    return new vscode.LanguageModelToolResult([
+      new vscode.LanguageModelTextPart(JSON.stringify(results)),
+    ]);
+  }
+}
+
+interface ListInput { scope?: 'personal' | 'project' }
+
+class ListMemoriesTool implements vscode.LanguageModelTool<ListInput> {
+  constructor(private store: MemoryStore) {}
+
+  async invoke(
+    options: vscode.LanguageModelToolInvocationOptions<ListInput>,
+    _token: vscode.CancellationToken,
+  ): Promise<vscode.LanguageModelToolResult> {
+    const { scope } = options.input;
+    const cwd = getWorkspaceCwd();
+
+    const results: (Memory & { scope: string })[] = [];
+    if (!scope || scope === 'personal') {
+      for (const m of this.store.getAll(getPersonalContainerTag(cwd))) {
+        results.push({ ...m, scope: 'personal' });
+      }
+    }
+    if (!scope || scope === 'project') {
+      for (const m of this.store.getAll(getRepoContainerTag(cwd))) {
+        results.push({ ...m, scope: 'project' });
+      }
+    }
+
+    return new vscode.LanguageModelToolResult([
+      new vscode.LanguageModelTextPart(JSON.stringify(results)),
+    ]);
+  }
+}
+
+interface DeleteInput { id: string }
+
+class DeleteMemoryTool implements vscode.LanguageModelTool<DeleteInput> {
+  constructor(private store: MemoryStore) {}
+
+  async invoke(
+    options: vscode.LanguageModelToolInvocationOptions<DeleteInput>,
+    _token: vscode.CancellationToken,
+  ): Promise<vscode.LanguageModelToolResult> {
+    const { id } = options.input;
+    const cwd = getWorkspaceCwd();
+
+    const deleted =
+      this.store.delete(id, getPersonalContainerTag(cwd)) ||
+      this.store.delete(id, getRepoContainerTag(cwd));
+
+    return new vscode.LanguageModelToolResult([
+      new vscode.LanguageModelTextPart(JSON.stringify({ deleted, id })),
+    ]);
+  }
 }

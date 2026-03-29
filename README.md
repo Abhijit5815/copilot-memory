@@ -20,6 +20,27 @@ This extension lets you save personal notes and project knowledge, then retrieve
 
 ## Quick Start
 
+### Option A — Install as a real extension (recommended for testing)
+
+This builds and installs the extension directly into VS Code, exactly like a published extension. No dev mode needed.
+
+```bash
+bash install-local.sh
+```
+
+Then **restart VS Code**. The extension will be active in all windows.
+
+To update after making changes, just run the script again.
+
+> **Requirements:** Node.js and `code` CLI must be on your PATH.
+> Install `code` CLI via VS Code: `Cmd+Shift+P` → `Shell Command: Install 'code' command in PATH`.
+
+To uninstall: go to the Extensions panel → find **Copilot Memory** → Uninstall.
+
+---
+
+### Option B — Run in dev mode (for active development)
+
 ### 1. Install dependencies
 
 ```bash

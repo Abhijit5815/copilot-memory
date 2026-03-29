@@ -5,6 +5,10 @@
   "version": "0.0.1",
   "publisher": "local",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/local/copilot-memory"
+  },
   "engines": {
     "vscode": "^1.93.0"
   },

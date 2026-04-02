@@ -38,6 +38,7 @@ To force a tool, type `#` in chat and pick one:
 | `copilot-memory_search` | Search saved memories |
 | `copilot-memory_list` | List all memories |
 | `copilot-memory_delete` | Delete a memory by ID |
+| `copilot-memory_refresh` | Force refresh and return memory fingerprints |
 
 ### Command Palette
 
@@ -47,6 +48,7 @@ To force a tool, type `#` in chat and pick one:
 - **Search Memories** — keyword search
 - **Show All Memories** — view everything
 - **Clear All Memories** — wipe with confirmation
+- **Refresh Memory State** — manual refresh fallback
 
 ## Storage
 
@@ -55,7 +57,7 @@ Memories persist forever in `~/.copilot-memory/` as JSONL files:
 ```
 ~/.copilot-memory/
   personal_<hash>/memories.jsonl      ← your notes (all repos)
-  repo_<git-repo-name>/memories.jsonl ← project-specific knowledge
+  repo_<git-repo-name>_<hash>/memories.jsonl ← project-specific knowledge
 ```
 
 ## Settings
@@ -65,6 +67,9 @@ Memories persist forever in `~/.copilot-memory/` as JSONL files:
 | `copilotMemory.maxContextItems` | `5` | Max results returned per search |
 | `copilotMemory.storageDir` | `~/.copilot-memory` | Storage directory |
 | `copilotMemory.debug` | `false` | Debug logging |
+| `copilotMemory.autoIngestOnSave` | `true` | Auto-save file snapshots to project memory on save |
+| `copilotMemory.autoIngestMaxChars` | `2000` | Max characters captured per saved file |
+| `copilotMemory.autoIngestIgnoreGlobs` | `node_modules/.git/out/dist/*.lock` | Files/folders excluded from auto-ingest |
 
 ## Development
 

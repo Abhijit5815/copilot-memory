@@ -1,5 +1,5 @@
 import * as crypto from 'node:crypto';
-import { getGitRoot, getGitRepoName } from './git-utils';
+import { getGitRoot, getGitRepoName, getGitRemoteUrl } from './git-utils';
 
 function sha256Short(input: string): string {
   return crypto.createHash('sha256').update(input).digest('hex').slice(0, 16);
@@ -20,13 +20,16 @@ export function getPersonalContainerTag(cwd: string): string {
   return `personal_${sha256Short(basePath)}`;
 }
 
-/** Repo container: scoped to git remote name, shared across team */
+/** Repo container: scoped to remote URL hash (fallback to git root hash). */
 export function getRepoContainerTag(cwd: string): string {
   const gitRoot = getGitRoot(cwd);
   const basePath = gitRoot || cwd;
+  const remoteUrl = getGitRemoteUrl(basePath);
   const gitRepoName = getGitRepoName(basePath);
   const repoName = gitRepoName || basePath.split('/').pop() || 'unknown';
-  return `repo_${sanitize(repoName)}`;
+  const identitySource = remoteUrl || basePath;
+  const identityHash = sha256Short(identitySource);
+  return `repo_${sanitize(repoName)}_${identityHash}`;
 }
 
 export function getProjectName(cwd: string): string {

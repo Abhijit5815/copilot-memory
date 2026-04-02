@@ -88,6 +88,16 @@
           "required": ["id"]
         },
         "canBeReferencedInPrompt": true
+      },
+      {
+        "name": "copilot-memory_refresh",
+        "displayName": "Refresh Memory",
+        "description": "Force refresh memory state and return current memory version fingerprints.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        },
+        "canBeReferencedInPrompt": true
       }
     ],
     "commands": [
@@ -106,6 +116,10 @@
       {
         "command": "copilot-memory.clearAll",
         "title": "Copilot Memory: Clear All Memories"
+      },
+      {
+        "command": "copilot-memory.refresh",
+        "title": "Copilot Memory: Refresh Memory State"
       }
     ],
     "configuration": {
@@ -125,6 +139,30 @@
           "type": "boolean",
           "default": false,
           "description": "Enable debug logging to output channel"
+        },
+        "copilotMemory.autoIngestOnSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically save file snapshots to project memory when files are saved"
+        },
+        "copilotMemory.autoIngestMaxChars": {
+          "type": "number",
+          "default": 2000,
+          "description": "Maximum characters captured per saved file snapshot"
+        },
+        "copilotMemory.autoIngestIgnoreGlobs": {
+          "type": "array",
+          "default": [
+            "**/node_modules/**",
+            "**/.git/**",
+            "**/out/**",
+            "**/dist/**",
+            "**/*.lock"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "Glob patterns ignored by auto-ingest"
         }
       }
     }

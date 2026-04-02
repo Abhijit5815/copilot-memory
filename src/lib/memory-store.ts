@@ -24,6 +24,13 @@ export interface SearchResult {
   score: number;
 }
 
+export interface ContainerFingerprint {
+  version: string;
+  hash: string;
+  count: number;
+  updatedAt: string | null;
+}
+
 export class MemoryStore {
   private storageDir: string;
 
@@ -125,6 +132,33 @@ export class MemoryStore {
     }
     debugLog('Container cleared', { containerTag, count });
     return count;
+  }
+
+  getFingerprint(containerTag: string): ContainerFingerprint {
+    const file = this.getMemoriesFile(containerTag);
+    if (!fs.existsSync(file)) {
+      return {
+        version: 'empty',
+        hash: 'empty',
+        count: 0,
+        updatedAt: null,
+      };
+    }
+
+    const stats = fs.statSync(file);
+    const content = fs.readFileSync(file, 'utf-8');
+    const hash = crypto.createHash('sha256').update(content).digest('hex').slice(0, 16);
+    const count = content
+      .split('\n')
+      .filter((line) => line.trim().length > 0)
+      .length;
+
+    return {
+      version: `${stats.mtimeMs}-${stats.size}`,
+      hash,
+      count,
+      updatedAt: stats.mtime.toISOString(),
+    };
   }
 
   private writeAll(containerTag: string, memories: Memory[]): void {

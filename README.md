@@ -1,6 +1,6 @@
 # Copilot Memory
 
-Persistent local memory for GitHub Copilot Chat. Copilot can save and recall information across sessions automatically — no special commands needed. All data stays on your machine.
+Persistent local memory for GitHub Copilot Chat backed by SQLite + FTS5, with optional hybrid vector search. Copilot can save and recall information across sessions automatically — no special commands needed. All data stays on your machine.
 
 ## Install
 
@@ -34,31 +34,45 @@ To force a tool, type `#` in chat and pick one:
 
 | Tool | What it does |
 |---|---|
-| `copilot-memory_save` | Save a note (personal or project-scoped) |
-| `copilot-memory_search` | Search saved memories |
+| `copilot-memory_save` | Save a note (global or project-scoped) |
+| `copilot-memory_search` | Search saved memories (FTS5 with optional hybrid vector search) |
 | `copilot-memory_list` | List all memories |
 | `copilot-memory_delete` | Delete a memory by ID |
 | `copilot-memory_refresh` | Force refresh and return memory fingerprints |
+
+### Scopes
+
+- **Global** — memories available across all repositories
+- **Project** — memories scoped to the current git repository
 
 ### Command Palette
 
 `Cmd+Shift+P`:
 
 - **Save Selection to Memory** — save highlighted code/text
-- **Search Memories** — keyword search
-- **Show All Memories** — view everything
-- **Clear All Memories** — wipe with confirmation
+- **Search Memories** — keyword search with score + source info
+- **Show All Memories** — view global + project memories
+- **Clear All Memories** — wipe with confirmation (global, project, or both)
 - **Refresh Memory State** — manual refresh fallback
+- **Migrate from JSONL** — one-time migration from old JSONL format
+- **Backfill Embedding Vectors** — generate embeddings for existing memories
 
 ## Storage
 
-Memories persist forever in `~/.copilot-memory/` as JSONL files:
+Memories are stored in a SQLite database at `~/.copilot-memory/memory.db` using WAL mode for concurrent reads. FTS5 provides full-text search with porter stemming.
 
 ```
 ~/.copilot-memory/
-  personal_<hash>/memories.jsonl      ← your notes (all repos)
-  repo_<git-repo-name>_<hash>/memories.jsonl ← project-specific knowledge
+  memory.db   ← SQLite database (memories, FTS index, vectors, migration log)
 ```
+
+### Search Modes
+
+| Mode | Description |
+|---|---|
+| `sparse` | FTS5 full-text search only (default, zero config) |
+| `hybrid-cloud` | FTS5 + cloud embedding vectors (e.g. OpenAI), fused via Reciprocal Rank Fusion |
+| `auto` | Uses hybrid if an embedding provider is configured, otherwise falls back to sparse |
 
 ## Settings
 
@@ -70,6 +84,28 @@ Memories persist forever in `~/.copilot-memory/` as JSONL files:
 | `copilotMemory.autoIngestOnSave` | `true` | Auto-save file snapshots to project memory on save |
 | `copilotMemory.autoIngestMaxChars` | `2000` | Max characters captured per saved file |
 | `copilotMemory.autoIngestIgnoreGlobs` | `node_modules/.git/out/dist/*.lock` | Files/folders excluded from auto-ingest |
+| `copilotMemory.defaultSaveScope` | `project` | Default scope when saving (`global` or `project`) |
+| `copilotMemory.searchMode` | `auto` | Search mode: `sparse`, `hybrid-cloud`, or `auto` |
+| `copilotMemory.embeddingProvider` | `none` | Embedding provider for hybrid search (`none` or `openai`) |
+| `copilotMemory.embeddingApiKey` | | API key for the embedding provider |
+| `copilotMemory.embeddingModel` | | Embedding model (e.g. `text-embedding-3-small`) |
+| `copilotMemory.embeddingDimensions` | `0` | Embedding dimensions (0 = provider default) |
+| `copilotMemory.embeddingBaseUrl` | | Custom base URL for the embedding API |
+
+### Hybrid Search Setup
+
+To enable hybrid search with OpenAI embeddings:
+
+1. Set `copilotMemory.embeddingProvider` to `openai`
+2. Set `copilotMemory.embeddingApiKey` to your OpenAI API key
+3. Set `copilotMemory.searchMode` to `hybrid-cloud` or `auto`
+4. Run **Copilot Memory: Backfill Embedding Vectors** to generate embeddings for existing memories
+
+New memories are automatically embedded when saved.
+
+## Migration from JSONL
+
+If upgrading from the old JSONL-based storage, run **Copilot Memory: Migrate from JSONL** from the command palette. This imports all existing memories into SQLite with proper scope mapping (`personal_*` → global, `repo_*` → project). Migration is idempotent — running it again skips already-migrated files.
 
 ## Development
 

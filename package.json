@@ -33,18 +33,23 @@
             },
             "scope": {
               "type": "string",
-              "enum": ["personal", "project"],
-              "description": "personal = your notes across all repos, project = scoped to current repo"
+              "enum": [
+                "global",
+                "project"
+              ],
+              "description": "global = your notes across all repos, project = scoped to current repo"
             }
           },
-          "required": ["content"]
+          "required": [
+            "content"
+          ]
         },
         "canBeReferencedInPrompt": true
       },
       {
         "name": "copilot-memory_search",
         "displayName": "Search Memory",
-        "description": "Search saved memories for relevant context. Searches both personal and project-scoped memories.",
+        "description": "Search saved memories for relevant context. Uses FTS5 indexing with optional hybrid vector search. Searches both global and project-scoped memories.",
         "inputSchema": {
           "type": "object",
           "properties": {
@@ -53,7 +58,9 @@
               "description": "Search query to find relevant memories"
             }
           },
-          "required": ["query"]
+          "required": [
+            "query"
+          ]
         },
         "canBeReferencedInPrompt": true
       },
@@ -66,7 +73,10 @@
           "properties": {
             "scope": {
               "type": "string",
-              "enum": ["personal", "project"],
+              "enum": [
+                "global",
+                "project"
+              ],
               "description": "Filter by scope, or omit to list all"
             }
           }
@@ -85,7 +95,9 @@
               "description": "The UUID of the memory to delete"
             }
           },
-          "required": ["id"]
+          "required": [
+            "id"
+          ]
         },
         "canBeReferencedInPrompt": true
       },
@@ -120,6 +132,14 @@
       {
         "command": "copilot-memory.refresh",
         "title": "Copilot Memory: Refresh Memory State"
+      },
+      {
+        "command": "copilot-memory.migrate",
+        "title": "Copilot Memory: Migrate from JSONL"
+      },
+      {
+        "command": "copilot-memory.backfillVectors",
+        "title": "Copilot Memory: Backfill Embedding Vectors"
       }
     ],
     "configuration": {
@@ -163,6 +183,44 @@
             "type": "string"
           },
           "description": "Glob patterns ignored by auto-ingest"
+        },
+        "copilotMemory.defaultSaveScope": {
+          "type": "string",
+          "enum": ["global", "project"],
+          "default": "project",
+          "description": "Default scope when saving memories (global = cross-repo, project = current repo)"
+        },
+        "copilotMemory.searchMode": {
+          "type": "string",
+          "enum": ["sparse", "hybrid-cloud", "hybrid-local", "auto"],
+          "default": "auto",
+          "description": "Search retrieval mode. sparse = FTS5 only, hybrid-cloud = FTS5 + cloud embeddings, auto = best available"
+        },
+        "copilotMemory.embeddingProvider": {
+          "type": "string",
+          "enum": ["none", "openai"],
+          "default": "none",
+          "description": "Embedding provider for hybrid search"
+        },
+        "copilotMemory.embeddingApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "API key for the embedding provider"
+        },
+        "copilotMemory.embeddingModel": {
+          "type": "string",
+          "default": "",
+          "description": "Embedding model name (e.g., text-embedding-3-small)"
+        },
+        "copilotMemory.embeddingDimensions": {
+          "type": "number",
+          "default": 0,
+          "description": "Embedding dimensions (0 = provider default)"
+        },
+        "copilotMemory.embeddingBaseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Custom base URL for the embedding API"
         }
       }
     }
@@ -174,8 +232,12 @@
     "package": "npx @vscode/vsce package"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.96.0",
     "typescript": "^5.5.0"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.8.0"
   }
 }

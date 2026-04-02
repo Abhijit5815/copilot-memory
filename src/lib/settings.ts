@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
 
+export type SearchMode = 'sparse' | 'hybrid-cloud' | 'hybrid-local' | 'auto';
+
 export interface Settings {
   maxContextItems: number;
   storageDir: string;
@@ -7,6 +9,13 @@ export interface Settings {
   autoIngestOnSave: boolean;
   autoIngestMaxChars: number;
   autoIngestIgnoreGlobs: string[];
+  defaultSaveScope: 'global' | 'project';
+  searchMode: SearchMode;
+  embeddingProvider: string;
+  embeddingApiKey: string;
+  embeddingModel: string;
+  embeddingDimensions: number;
+  embeddingBaseUrl: string;
 }
 
 export function getSettings(): Settings {
@@ -21,6 +30,13 @@ export function getSettings(): Settings {
       'autoIngestIgnoreGlobs',
       ['**/node_modules/**', '**/.git/**', '**/out/**', '**/dist/**', '**/*.lock'],
     ),
+    defaultSaveScope: config.get<'global' | 'project'>('defaultSaveScope', 'project'),
+    searchMode: config.get<SearchMode>('searchMode', 'auto'),
+    embeddingProvider: config.get<string>('embeddingProvider', 'none'),
+    embeddingApiKey: config.get<string>('embeddingApiKey', ''),
+    embeddingModel: config.get<string>('embeddingModel', ''),
+    embeddingDimensions: config.get<number>('embeddingDimensions', 0),
+    embeddingBaseUrl: config.get<string>('embeddingBaseUrl', ''),
   };
 }
 

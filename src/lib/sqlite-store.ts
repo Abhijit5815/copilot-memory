@@ -95,12 +95,6 @@ export class SqliteMemoryStore {
         dimensions INTEGER NOT NULL,
         created_at TEXT NOT NULL
       );
-
-      CREATE TABLE IF NOT EXISTS migration_log (
-        source TEXT PRIMARY KEY,
-        migrated_at TEXT NOT NULL,
-        count INTEGER NOT NULL
-      );
     `);
   }
 
@@ -320,22 +314,6 @@ export class SqliteMemoryStore {
       count: countRow.cnt,
       updatedAt: latestRow.latest,
     };
-  }
-
-  // --- Migration helpers ---
-
-  isMigrated(source: string): boolean {
-    const row = this.db
-      .prepare('SELECT 1 FROM migration_log WHERE source = ?')
-      .get(source);
-    return !!row;
-  }
-
-  markMigrated(source: string, count: number): void {
-    this.db.prepare(`
-      INSERT OR REPLACE INTO migration_log (source, migrated_at, count)
-      VALUES (?, ?, ?)
-    `).run(source, new Date().toISOString(), count);
   }
 
   // --- Lifecycle ---

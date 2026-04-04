@@ -54,7 +54,6 @@ To force a tool, type `#` in chat and pick one:
 - **Show All Memories** — view global + project memories
 - **Clear All Memories** — wipe with confirmation (global, project, or both)
 - **Refresh Memory State** — manual refresh fallback
-- **Migrate from JSONL** — one-time migration from old JSONL format
 - **Backfill Embedding Vectors** — generate embeddings for existing memories
 
 ## Storage
@@ -63,7 +62,7 @@ Memories are stored in a SQLite database at `~/.copilot-memory/memory.db` using 
 
 ```
 ~/.copilot-memory/
-  memory.db   ← SQLite database (memories, FTS index, vectors, migration log)
+  memory.db   ← SQLite database (memories, FTS index, vectors)
 ```
 
 ### Search Modes
@@ -102,10 +101,6 @@ To enable hybrid search with OpenAI embeddings:
 4. Run **Copilot Memory: Backfill Embedding Vectors** to generate embeddings for existing memories
 
 New memories are automatically embedded when saved.
-
-## Migration from JSONL
-
-If upgrading from the old JSONL-based storage, run **Copilot Memory: Migrate from JSONL** from the command palette. This imports all existing memories into SQLite with proper scope mapping (`personal_*` → global, `repo_*` → project). Migration is idempotent — running it again skips already-migrated files.
 
 ## Development
 

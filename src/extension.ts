@@ -1,10 +1,7 @@
 import * as vscode from 'vscode';
-import * as path from 'node:path';
-import * as os from 'node:os';
 import { SqliteMemoryStore, Memory } from './lib/sqlite-store';
 import { SearchEngine } from './lib/search-engine';
 import { createEmbeddingProvider } from './lib/embeddings';
-import { migrateFromJsonl } from './lib/migration';
 import { getSettings, getOutputChannel, debugLog } from './lib/settings';
 import { getRepoContainerTag, getProjectName } from './lib/container-tag';
 
@@ -140,16 +137,6 @@ export function activate(context: vscode.ExtensionContext) {
       const message = `Memory refreshed. global: ${globalFp.count} items, project: ${projectFp.count} items`;
       debugLog('Manual memory refresh', { globalFp, projectFp });
       vscode.window.showInformationMessage(message);
-    }),
-  );
-
-  context.subscriptions.push(
-    vscode.commands.registerCommand('copilot-memory.migrate', async () => {
-      const dir = settings.storageDir || path.join(os.homedir(), '.copilot-memory');
-      const result = migrateFromJsonl(dir, store);
-      vscode.window.showInformationMessage(
-        `Migration complete: ${result.migrated} imported, ${result.skipped} skipped, ${result.errors} errors.`,
-      );
     }),
   );
 

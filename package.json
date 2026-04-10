@@ -16,7 +16,7 @@
     "AI",
     "Chat"
   ],
-  "main": "./out/extension.js",
+  "main": "./dist/extension.js",
   "activationEvents": [],
   "contributes": {
     "languageModelTools": [
@@ -38,6 +38,19 @@
                 "project"
               ],
               "description": "global = your notes across all repos, project = scoped to current repo"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "manual",
+                "decision",
+                "preference",
+                "constraint",
+                "bug-root-cause",
+                "architecture-note",
+                "command-snippet"
+              ],
+              "description": "Optional memory type to improve retrieval and organization"
             }
           },
           "required": [
@@ -159,12 +172,23 @@
         "copilotMemory.autoIngestOnSave": {
           "type": "boolean",
           "default": true,
-          "description": "Automatically save file snapshots to project memory when files are saved"
+          "description": "Automatically ingest memories when files are saved"
+        },
+        "copilotMemory.autoIngestStrategy": {
+          "type": "string",
+          "enum": ["selective", "snapshot"],
+          "default": "selective",
+          "description": "Ingest strategy: selective stores high-signal insights, snapshot stores raw file snippets"
         },
         "copilotMemory.autoIngestMaxChars": {
           "type": "number",
           "default": 2000,
           "description": "Maximum characters captured per saved file snapshot"
+        },
+        "copilotMemory.autoIngestMaxInsights": {
+          "type": "number",
+          "default": 3,
+          "description": "Maximum number of high-signal insights captured per saved file"
         },
         "copilotMemory.autoIngestIgnoreGlobs": {
           "type": "array",
@@ -188,7 +212,7 @@
         },
         "copilotMemory.searchMode": {
           "type": "string",
-          "enum": ["sparse", "hybrid-cloud", "hybrid-local", "auto"],
+          "enum": ["sparse", "hybrid-cloud", "auto"],
           "default": "auto",
           "description": "Search retrieval mode. sparse = FTS5 only, hybrid-cloud = FTS5 + cloud embeddings, auto = best available"
         },
@@ -222,15 +246,22 @@
     }
   },
   "scripts": {
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
-    "lint": "tsc --noEmit",
-    "package": "npx @vscode/vsce package"
+    "check-types": "tsc --noEmit -p ./",
+    "compile": "npm run check-types && node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "compile-tests": "tsc -p ./ --outDir out",
+    "lint": "npm run check-types",
+    "test": "npm run compile-tests && node --test out/test/**/*.test.js",
+    "package": "npm run check-types && node esbuild.js --production",
+    "vscode:prepublish": "npm run package",
+    "vsix": "npx @vscode/vsce package --allow-missing-repository",
+    "publish:vsce": "npx @vscode/vsce publish"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.96.0",
+    "esbuild": "^0.25.2",
     "typescript": "^5.5.0"
   },
   "dependencies": {

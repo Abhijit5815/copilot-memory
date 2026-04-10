@@ -1,5 +1,7 @@
-import { SqliteMemoryStore, Memory, Scope } from './sqlite-store';
+import { Memory, Scope } from './memory-domain';
+import { SqliteMemoryStore } from './sqlite-store';
 import { EmbeddingProvider, NoopEmbeddingProvider } from './embeddings';
+import { applyRankingBoosts } from './ranking';
 import { debugLog, SearchMode } from './settings';
 
 export interface SearchOptions {
@@ -40,7 +42,7 @@ export class SearchEngine {
 
   private async resolveMode(mode: SearchMode): Promise<'sparse' | 'hybrid'> {
     if (mode === 'sparse') return 'sparse';
-    if (mode === 'hybrid-cloud' || mode === 'hybrid-local') {
+    if (mode === 'hybrid-cloud') {
       return (await this.embeddingProvider.isAvailable()) ? 'hybrid' : 'sparse';
     }
     // auto
@@ -63,7 +65,8 @@ export class SearchEngine {
       source: 'fts' as const,
     }));
 
-    return applyRecencyBoost(results).slice(0, limit);
+    const boosted = applyRankingBoosts(results, query, projectId);
+    return applyRecencyBoost(boosted).slice(0, limit);
   }
 
   private async hybridSearch(
@@ -117,7 +120,8 @@ export class SearchEngine {
     }
 
     results.sort((a, b) => b.score - a.score);
-    return applyRecencyBoost(results).slice(0, limit);
+    const boosted = applyRankingBoosts(results, query, projectId);
+    return applyRecencyBoost(boosted).slice(0, limit);
   }
 
   async backfillVectors(batchSize = 50): Promise<number> {

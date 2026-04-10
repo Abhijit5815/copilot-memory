@@ -1,5 +1,8 @@
 import * as vscode from 'vscode';
-import { SqliteMemoryStore, Memory } from './lib/sqlite-store';
+import { Memory, MemoryType } from './lib/memory-domain';
+import { extractHighSignalInsights } from './lib/ingest-policy';
+import { MemoryService } from './lib/memory-service';
+import { SqliteMemoryStore } from './lib/sqlite-store';
 import { SearchEngine } from './lib/search-engine';
 import { createEmbeddingProvider } from './lib/embeddings';
 import { getSettings, getOutputChannel, debugLog } from './lib/settings';
@@ -18,18 +21,19 @@ export function activate(context: vscode.ExtensionContext) {
   });
 
   const searchEngine = new SearchEngine(store, embeddingProvider);
+  const memoryService = new MemoryService(store);
 
   // --- Language Model Tools ---
 
   context.subscriptions.push(
-    vscode.lm.registerTool('copilot-memory_save', new SaveMemoryTool(store)),
+    vscode.lm.registerTool('copilot-memory_save', new SaveMemoryTool(store, memoryService)),
     vscode.lm.registerTool('copilot-memory_search', new SearchMemoryTool(store, searchEngine)),
     vscode.lm.registerTool('copilot-memory_list', new ListMemoriesTool(store)),
     vscode.lm.registerTool('copilot-memory_delete', new DeleteMemoryTool(store)),
     vscode.lm.registerTool('copilot-memory_refresh', new RefreshMemoryTool(store)),
   );
 
-  setupAutoIngestOnSave(context, store);
+  setupAutoIngestOnSave(context, memoryService);
 
   // --- Command Palette ---
 
@@ -43,14 +47,13 @@ export function activate(context: vscode.ExtensionContext) {
 
       const cwd = getWorkspaceCwd();
       const scope = settings.defaultSaveScope;
-      store.add({
+      const result = memoryService.saveFromWorkspace({
         content: selection,
         scope,
-        projectId: getRepoContainerTag(cwd),
-        projectName: getProjectName(cwd),
         type: 'manual',
-      });
-      vscode.window.showInformationMessage(`Memory saved to ${scope} (${getProjectName(cwd)})`);
+      }, { cwd });
+      const verb = result.status === 'created' ? 'saved' : 'updated';
+      vscode.window.showInformationMessage(`Memory ${verb} in ${scope} (${getProjectName(cwd)})`);
     }),
   );
 
@@ -161,7 +164,7 @@ function getWorkspaceCwd(): string {
   return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
 }
 
-function setupAutoIngestOnSave(context: vscode.ExtensionContext, store: SqliteMemoryStore): void {
+function setupAutoIngestOnSave(context: vscode.ExtensionContext, memoryService: MemoryService): void {
   const lastHashesByFile = new Map<string, string>();
 
   context.subscriptions.push(
@@ -188,24 +191,55 @@ function setupAutoIngestOnSave(context: vscode.ExtensionContext, store: SqliteMe
       lastHashesByFile.set(key, contentHash);
 
       const cwd = workspaceFolder.uri.fsPath;
-      const projectName = getProjectName(cwd);
-      const projectId = getRepoContainerTag(cwd);
+      if (settings.autoIngestStrategy === 'snapshot') {
+        const result = memoryService.saveFileSnapshot(snippet, relPath, document.languageId, { cwd });
 
-      store.add({
-        content: [
-          `File updated: ${relPath}`,
-          `Language: ${document.languageId}`,
-          'Snapshot:',
-          snippet,
-        ].join('\n'),
-        scope: 'project',
-        projectId,
-        projectName,
-        type: 'project-knowledge',
-        tags: ['auto-ingest', 'file-save', relPath],
+        debugLog('Auto-ingested saved file snapshot', {
+          relPath,
+          chars: snippet.length,
+          projectName: getProjectName(cwd),
+          status: result.status,
+        });
+        return;
+      }
+
+      const insights = extractHighSignalInsights(
+        snippet,
+        settings.autoIngestMaxChars,
+        settings.autoIngestMaxInsights,
+      );
+
+      if (insights.length === 0) {
+        debugLog('Auto-ingest skipped: no high-signal insights', { relPath });
+        return;
+      }
+
+      let created = 0;
+      let updated = 0;
+
+      for (const insight of insights) {
+        const result = memoryService.saveProjectInsight(
+          [
+            `File: ${relPath}`,
+            `Language: ${document.languageId}`,
+            `Insight: ${insight.text}`,
+          ].join('\n'),
+          insight.type,
+          ['auto-ingest', 'selective', relPath, ...insight.tags],
+          { cwd },
+        );
+
+        if (result.status === 'created') created += 1;
+        else updated += 1;
+      }
+
+      debugLog('Auto-ingested high-signal insights', {
+        relPath,
+        insights: insights.length,
+        created,
+        updated,
+        projectName: getProjectName(cwd),
       });
-
-      debugLog('Auto-ingested saved file', { relPath, chars: snippet.length, projectName });
     }),
   );
 }
@@ -234,28 +268,33 @@ function stableHash(input: string): string {
 
 // --- Language Model Tool implementations ---
 
-interface SaveInput { content: string; scope?: 'global' | 'project' }
+interface SaveInput {
+  content: string;
+  scope?: 'global' | 'project';
+  type?: MemoryType;
+}
 
 class SaveMemoryTool implements vscode.LanguageModelTool<SaveInput> {
-  constructor(private store: SqliteMemoryStore) {}
+  constructor(
+    private store: SqliteMemoryStore,
+    private memoryService: MemoryService,
+  ) {}
 
   async invoke(
     options: vscode.LanguageModelToolInvocationOptions<SaveInput>,
     _token: vscode.CancellationToken,
   ): Promise<vscode.LanguageModelToolResult> {
     const settings = getSettings();
-    const { content, scope = settings.defaultSaveScope } = options.input;
+    const { content, scope = settings.defaultSaveScope, type } = options.input;
     const cwd = getWorkspaceCwd();
     const projectId = getRepoContainerTag(cwd);
     const projectName = getProjectName(cwd);
 
-    const memory = this.store.add({
+    const result = this.memoryService.saveFromWorkspace({
       content,
       scope,
-      projectId,
-      projectName,
-      type: scope === 'project' ? 'project-knowledge' : 'manual',
-    });
+      type,
+    }, { cwd });
 
     const fingerprint = this.store.getFingerprint(
       scope,
@@ -266,9 +305,11 @@ class SaveMemoryTool implements vscode.LanguageModelTool<SaveInput> {
       new vscode.LanguageModelTextPart(
         JSON.stringify({
           saved: true,
-          id: memory.id,
+          status: result.status,
+          id: result.memory.id,
           scope,
           project: projectName,
+          type: result.memory.type,
           memoryVersion: fingerprint.version,
           memoryHash: fingerprint.hash,
         }),

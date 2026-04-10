@@ -3,33 +3,18 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import * as crypto from 'node:crypto';
 import Database from 'better-sqlite3';
+import {
+  Memory,
+  MemoryInput,
+  MemoryType,
+  normalizeMemoryContent,
+  SaveMemoryResult,
+  Scope,
+} from './memory-domain';
 import { debugLog } from './settings';
 
 const DEFAULT_STORAGE_DIR = path.join(os.homedir(), '.copilot-memory');
 const DB_FILENAME = 'memory.db';
-
-export type Scope = 'global' | 'project';
-
-export interface Memory {
-  id: string;
-  content: string;
-  scope: Scope;
-  projectId: string | null;
-  projectName: string | null;
-  type: 'manual' | 'project-knowledge';
-  tags: string[];
-  createdAt: string;
-  updatedAt: string | null;
-}
-
-export interface MemoryInput {
-  content: string;
-  scope: Scope;
-  projectId?: string;
-  projectName?: string;
-  type?: 'manual' | 'project-knowledge';
-  tags?: string[];
-}
 
 export interface FtsResult {
   memory: Memory;
@@ -69,6 +54,7 @@ export class SqliteMemoryStore {
       CREATE TABLE IF NOT EXISTS memories (
         id TEXT PRIMARY KEY,
         content TEXT NOT NULL,
+        content_fingerprint TEXT,
         scope TEXT NOT NULL DEFAULT 'global' CHECK(scope IN ('global', 'project')),
         project_id TEXT,
         project_name TEXT,
@@ -80,7 +66,8 @@ export class SqliteMemoryStore {
 
       CREATE INDEX IF NOT EXISTS idx_memories_scope ON memories(scope);
       CREATE INDEX IF NOT EXISTS idx_memories_project_id ON memories(project_id);
-      CREATE INDEX IF NOT EXISTS idx_memories_created_at ON memories(created_at);
+        CREATE INDEX IF NOT EXISTS idx_memories_created_at ON memories(created_at);
+        CREATE INDEX IF NOT EXISTS idx_memories_fingerprint ON memories(scope, project_id, type, content_fingerprint);
 
       CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
         memory_id UNINDEXED,
@@ -96,6 +83,35 @@ export class SqliteMemoryStore {
         created_at TEXT NOT NULL
       );
     `);
+
+    this.ensureColumnExists('memories', 'content_fingerprint', 'TEXT');
+    this.backfillContentFingerprints();
+  }
+
+  private ensureColumnExists(table: string, column: string, definition: string): void {
+    const columns = this.db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+    if (columns.some((entry) => entry.name === column)) return;
+    this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+
+  private backfillContentFingerprints(): void {
+    const rows = this.db.prepare(`
+      SELECT id, content FROM memories WHERE content_fingerprint IS NULL
+    `).all() as { id: string; content: string }[];
+
+    const update = this.db.prepare(`
+      UPDATE memories
+      SET content_fingerprint = ?
+      WHERE id = ?
+    `);
+
+    const transaction = this.db.transaction(() => {
+      for (const row of rows) {
+        update.run(hashNormalizedContent(row.content), row.id);
+      }
+    });
+
+    transaction();
   }
 
   // --- Scope filter builder ---
@@ -125,9 +141,42 @@ export class SqliteMemoryStore {
 
   // --- CRUD ---
 
-  add(input: MemoryInput): Memory {
+  save(input: MemoryInput): SaveMemoryResult {
     const trimmed = input.content.trim();
     if (!trimmed) throw new Error('Memory content cannot be empty');
+
+    const type = input.type ?? 'manual';
+    const contentFingerprint = hashNormalizedContent(trimmed);
+    const duplicate = this.findDuplicate(contentFingerprint, input.scope, input.projectId, type);
+
+    if (duplicate) {
+      const updatedAt = new Date().toISOString();
+      this.db.prepare(`
+        UPDATE memories
+        SET content = ?,
+            project_name = ?,
+            tags = ?,
+            updated_at = ?
+        WHERE id = ?
+      `).run(
+        trimmed,
+        input.projectName ?? duplicate.projectName,
+        JSON.stringify(input.tags ?? duplicate.tags),
+        updatedAt,
+        duplicate.id,
+      );
+
+      const updated: Memory = {
+        ...duplicate,
+        content: trimmed,
+        projectName: input.projectName ?? duplicate.projectName,
+        tags: input.tags ?? duplicate.tags,
+        updatedAt,
+      };
+
+      debugLog('Memory updated', { id: updated.id, scope: updated.scope, type: updated.type });
+      return { memory: updated, status: 'updated' };
+    }
 
     const memory: Memory = {
       id: crypto.randomUUID(),
@@ -135,7 +184,7 @@ export class SqliteMemoryStore {
       scope: input.scope,
       projectId: input.projectId ?? null,
       projectName: input.projectName ?? null,
-      type: input.type ?? 'manual',
+      type,
       tags: input.tags ?? [],
       createdAt: new Date().toISOString(),
       updatedAt: null,
@@ -143,10 +192,10 @@ export class SqliteMemoryStore {
 
     const transaction = this.db.transaction(() => {
       this.db.prepare(`
-        INSERT INTO memories (id, content, scope, project_id, project_name, type, tags, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO memories (id, content, content_fingerprint, scope, project_id, project_name, type, tags, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
-        memory.id, memory.content, memory.scope,
+        memory.id, memory.content, contentFingerprint, memory.scope,
         memory.projectId, memory.projectName, memory.type,
         JSON.stringify(memory.tags), memory.createdAt, memory.updatedAt,
       );
@@ -156,8 +205,47 @@ export class SqliteMemoryStore {
     });
 
     transaction();
-    debugLog('Memory saved', { id: memory.id, scope: memory.scope });
-    return memory;
+    debugLog('Memory saved', { id: memory.id, scope: memory.scope, type: memory.type });
+    return { memory, status: 'created' };
+  }
+
+  add(input: MemoryInput): Memory {
+    return this.save(input).memory;
+  }
+
+  private findDuplicate(
+    contentFingerprint: string,
+    scope: Scope,
+    projectId: string | undefined,
+    type: MemoryType,
+  ): Memory | null {
+    if (scope === 'global') {
+      const row = this.db.prepare(`
+        SELECT *
+        FROM memories
+        WHERE scope = ?
+          AND type = ?
+          AND content_fingerprint = ?
+        ORDER BY created_at DESC
+        LIMIT 1
+      `).get(scope, type, contentFingerprint) as MemoryRow | undefined;
+
+      return row ? rowToMemory(row) : null;
+    }
+
+    const scopedProjectId = scope === 'project' ? projectId ?? null : null;
+    const row = this.db.prepare(`
+      SELECT *
+      FROM memories
+      WHERE scope = ?
+        AND type = ?
+        AND content_fingerprint = ?
+        AND ((project_id IS NULL AND ? IS NULL) OR project_id = ?)
+      ORDER BY created_at DESC
+      LIMIT 1
+    `).get(scope, type, contentFingerprint, scopedProjectId, scopedProjectId) as MemoryRow | undefined;
+
+    return row ? rowToMemory(row) : null;
   }
 
   getAll(scope?: Scope, projectId?: string): Memory[] {
@@ -328,6 +416,7 @@ export class SqliteMemoryStore {
 interface MemoryRow {
   id: string;
   content: string;
+  content_fingerprint?: string | null;
   scope: string;
   project_id: string | null;
   project_name: string | null;
@@ -344,11 +433,18 @@ function rowToMemory(row: MemoryRow): Memory {
     scope: row.scope as Scope,
     projectId: row.project_id,
     projectName: row.project_name,
-    type: row.type as 'manual' | 'project-knowledge',
+    type: row.type as MemoryType,
     tags: JSON.parse(row.tags || '[]'),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+function hashNormalizedContent(content: string): string {
+  return crypto
+    .createHash('sha256')
+    .update(normalizeMemoryContent(content))
+    .digest('hex');
 }
 
 function cosineSimilarity(a: Float32Array, b: Float32Array): number {

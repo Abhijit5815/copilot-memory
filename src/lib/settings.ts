@@ -1,13 +1,16 @@
 import * as vscode from 'vscode';
 
-export type SearchMode = 'sparse' | 'hybrid-cloud' | 'hybrid-local' | 'auto';
+export type SearchMode = 'sparse' | 'hybrid-cloud' | 'auto';
+export type AutoIngestStrategy = 'selective' | 'snapshot';
 
 export interface Settings {
   maxContextItems: number;
   storageDir: string;
   debug: boolean;
   autoIngestOnSave: boolean;
+  autoIngestStrategy: AutoIngestStrategy;
   autoIngestMaxChars: number;
+  autoIngestMaxInsights: number;
   autoIngestIgnoreGlobs: string[];
   defaultSaveScope: 'global' | 'project';
   searchMode: SearchMode;
@@ -25,7 +28,9 @@ export function getSettings(): Settings {
     storageDir: config.get<string>('storageDir', ''),
     debug: config.get<boolean>('debug', false),
     autoIngestOnSave: config.get<boolean>('autoIngestOnSave', true),
+    autoIngestStrategy: config.get<AutoIngestStrategy>('autoIngestStrategy', 'selective'),
     autoIngestMaxChars: config.get<number>('autoIngestMaxChars', 2000),
+    autoIngestMaxInsights: config.get<number>('autoIngestMaxInsights', 3),
     autoIngestIgnoreGlobs: config.get<string[]>(
       'autoIngestIgnoreGlobs',
       ['**/node_modules/**', '**/.git/**', '**/out/**', '**/dist/**', '**/*.lock'],

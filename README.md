@@ -12,6 +12,53 @@ Restart VS Code. Done.
 
 > Requires Node.js and `code` CLI on your PATH.
 
+### Install for End Users
+
+After this extension is published to the VS Code Marketplace, users can install it with:
+
+```bash
+code --install-extension <publisher>.copilot-memory
+```
+
+or by searching for the extension in the VS Code Extensions view.
+
+### Publish to Marketplace
+
+1. Update `publisher` in `package.json` to your actual Marketplace publisher ID.
+2. Login once with `npx @vscode/vsce login <publisher>`.
+3. Publish with:
+
+```bash
+npm run publish:vsce
+```
+
+If you want to distribute a build outside Marketplace, create a VSIX with:
+
+```bash
+npm run vsix
+```
+
+### Automated Releases (GitHub Actions)
+
+This repository includes:
+
+- `.github/workflows/ci.yml`: runs checks/tests/packages on pushes and PRs.
+- `.github/workflows/release.yml`: publishes on tags like `v0.0.2` (or manual dispatch).
+
+Setup steps:
+
+1. Set `publisher` in `package.json` to your Marketplace publisher ID.
+2. Add repository secret `VSCE_PAT` with Marketplace Manage scope.
+3. Bump `version` in `package.json`.
+4. Create and push a matching git tag:
+
+```bash
+git tag v0.0.2
+git push origin v0.0.2
+```
+
+The release workflow validates tag/version alignment, runs tests, publishes to Marketplace, and uploads the `.vsix` as a GitHub release asset.
+
 ## Usage
 
 Just chat with Copilot normally:
@@ -34,11 +81,24 @@ To force a tool, type `#` in chat and pick one:
 
 | Tool | What it does |
 |---|---|
-| `copilot-memory_save` | Save a note (global or project-scoped) |
+| `copilot-memory_save` | Save a note with optional type metadata (global or project-scoped) |
 | `copilot-memory_search` | Search saved memories (FTS5 with optional hybrid vector search) |
 | `copilot-memory_list` | List all memories |
 | `copilot-memory_delete` | Delete a memory by ID |
 | `copilot-memory_refresh` | Force refresh and return memory fingerprints |
+
+`copilot-memory_save` supports these optional memory types:
+
+- `decision`
+- `preference`
+- `constraint`
+- `bug-root-cause`
+- `architecture-note`
+- `command-snippet`
+
+Repeated saves of the same normalized content in the same scope are deduplicated and update the existing memory instead of creating another row.
+
+Auto-ingest now defaults to a selective strategy that captures high-signal insights (decisions, constraints, bug/root-cause clues, architecture notes, command snippets) rather than always storing raw file snapshots. You can switch back to raw snapshots in settings.
 
 ### Scopes
 
@@ -80,9 +140,11 @@ Memories are stored in a SQLite database at `~/.copilot-memory/memory.db` using 
 | `copilotMemory.maxContextItems` | `5` | Max results returned per search |
 | `copilotMemory.storageDir` | `~/.copilot-memory` | Storage directory |
 | `copilotMemory.debug` | `false` | Debug logging |
-| `copilotMemory.autoIngestOnSave` | `true` | Auto-save file snapshots to project memory on save |
+| `copilotMemory.autoIngestOnSave` | `true` | Enable save-time memory ingestion |
+| `copilotMemory.autoIngestStrategy` | `selective` | Ingest mode: `selective` for high-signal insights, `snapshot` for raw snippets |
 | `copilotMemory.autoIngestMaxChars` | `2000` | Max characters captured per saved file |
-| `copilotMemory.autoIngestIgnoreGlobs` | `node_modules/.git/out/dist/*.lock` | Files/folders excluded from auto-ingest |
+| `copilotMemory.autoIngestMaxInsights` | `3` | Max high-signal insights captured per saved file in selective mode |
+| `copilotMemory.autoIngestIgnoreGlobs` | `**/node_modules/**, **/.git/**, **/out/**, **/dist/**, **/*.lock` | Files/folders excluded from auto-ingest |
 | `copilotMemory.defaultSaveScope` | `project` | Default scope when saving (`global` or `project`) |
 | `copilotMemory.searchMode` | `auto` | Search mode: `sparse`, `hybrid-cloud`, or `auto` |
 | `copilotMemory.embeddingProvider` | `none` | Embedding provider for hybrid search (`none` or `openai`) |
@@ -106,8 +168,10 @@ New memories are automatically embedded when saved.
 
 ```bash
 npm install
-npm run compile   # build
-npm run watch     # build on change
+npm run compile   # type-check + bundle to dist/
+npm run watch     # watch bundle rebuilds
+npm test          # compile tests + run node tests
+npm run vsix      # package installable VSIX
 ```
 
 Press `F5` in VS Code to launch the extension in dev mode.

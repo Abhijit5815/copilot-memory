@@ -13,13 +13,6 @@ function sanitize(name: string): string {
     .replace(/^_|_$/g, '');
 }
 
-/** Personal container: scoped to user + repo path */
-export function getPersonalContainerTag(cwd: string): string {
-  const gitRoot = getGitRoot(cwd);
-  const basePath = gitRoot || cwd;
-  return `personal_${sha256Short(basePath)}`;
-}
-
 /** Repo container: scoped to remote URL hash (fallback to git root hash). */
 export function getRepoContainerTag(cwd: string): string {
   const gitRoot = getGitRoot(cwd);

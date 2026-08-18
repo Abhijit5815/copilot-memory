@@ -14,6 +14,7 @@ import { debugLog } from './settings';
 
 const DEFAULT_STORAGE_DIR = path.join(os.homedir(), '.copilot-memory');
 const STORE_FILENAME = 'memory-store.json';
+const PROJECT_STORE_FILENAME = 'project-memory.enc.json';
 const LEGACY_DB_FILENAME = 'memory.db';
 
 export interface FtsResult {
@@ -33,34 +34,52 @@ export interface StoreFingerprint {
   updatedAt: string | null;
 }
 
-export class SqliteMemoryStore {
+export class MemoryStore {
   private storageDir: string;
   private storePath: string;
+  private projectStorePath: string | null;
+  private projectMemoryKey: string | null;
   private state: PersistedStore;
 
-  constructor(storageDir?: string) {
+  constructor(storageDir?: string, projectRoot?: string, projectMemoryKey?: string) {
     this.storageDir = storageDir || DEFAULT_STORAGE_DIR;
     if (!fs.existsSync(this.storageDir)) {
       fs.mkdirSync(this.storageDir, { recursive: true });
     }
+
+    this.projectMemoryKey = projectMemoryKey || process.env.COPILOT_MEMORY_KEY || 'demoKey';
+    const repoMemoryDir = projectRoot ? path.join(projectRoot, '.copilot-memory') : null;
+    this.projectStorePath = repoMemoryDir ? path.join(repoMemoryDir, PROJECT_STORE_FILENAME) : null;
+    if (this.projectStorePath && !fs.existsSync(path.dirname(this.projectStorePath))) {
+      fs.mkdirSync(path.dirname(this.projectStorePath), { recursive: true });
+    }
+
     this.storePath = path.join(this.storageDir, STORE_FILENAME);
     this.state = this.loadState();
   }
 
   private loadState(): PersistedStore {
-    if (!fs.existsSync(this.storePath)) {
-      const legacyDbPath = path.join(this.storageDir, LEGACY_DB_FILENAME);
-      if (fs.existsSync(legacyDbPath)) {
-        debugLog('Legacy SQLite database detected; starting with portable store file', {
-          legacyDbPath,
-          storePath: this.storePath,
-        });
+    const globalState = this.loadScopeState(this.storePath, 'global', false);
+    const projectState = this.projectStorePath ? this.loadScopeState(this.projectStorePath, 'project', true) : createEmptyState();
+    return mergeStates(globalState, projectState);
+  }
+
+  private loadScopeState(filePath: string, scope: Scope, encrypted: boolean): PersistedStore {
+    if (!fs.existsSync(filePath)) {
+      if (scope === 'global') {
+        const legacyDbPath = path.join(this.storageDir, LEGACY_DB_FILENAME);
+        if (fs.existsSync(legacyDbPath)) {
+          debugLog('Legacy SQLite database detected; starting with portable store file', {
+            legacyDbPath,
+            storePath: filePath,
+          });
+        }
       }
       return createEmptyState();
     }
 
-    const raw = fs.readFileSync(this.storePath, 'utf8');
-    const parsed = JSON.parse(raw) as Partial<PersistedStore>;
+    const raw = fs.readFileSync(filePath, 'utf8');
+    const parsed = encrypted ? decryptPersistedStore(raw, this.getProjectMemoryKey()) : JSON.parse(raw) as Partial<PersistedStore>;
     const memories = Array.isArray(parsed.memories)
       ? parsed.memories.map(normalizePersistedMemory)
       : [];
@@ -74,9 +93,48 @@ export class SqliteMemoryStore {
   }
 
   private persist(): void {
-    const tempPath = `${this.storePath}.tmp`;
-    fs.writeFileSync(tempPath, `${JSON.stringify(this.state, null, 2)}\n`, 'utf8');
-    fs.renameSync(tempPath, this.storePath);
+    const globalState = this.filterStateByScope('global');
+    const projectState = this.filterStateByScope('project');
+
+    const tempGlobalPath = `${this.storePath}.tmp`;
+    fs.writeFileSync(tempGlobalPath, `${JSON.stringify(globalState, null, 2)}\n`, 'utf8');
+    fs.renameSync(tempGlobalPath, this.storePath);
+
+    if (this.projectStorePath) {
+      const key = this.getProjectMemoryKey();
+      if (!key) {
+        throw new Error('Project memory encryption key is missing. Set copilotMemory.projectMemoryKey or COPILOT_MEMORY_KEY.');
+      }
+      const projectOutput = encryptPersistedStore(projectState, key);
+      const tempProjectPath = `${this.projectStorePath}.tmp`;
+      fs.writeFileSync(tempProjectPath, `${projectOutput}\n`, 'utf8');
+      fs.renameSync(tempProjectPath, this.projectStorePath);
+    }
+  }
+
+  private getProjectMemoryKey(): string {
+    if (!this.projectMemoryKey) {
+      this.projectMemoryKey = 'demoKey';
+    }
+    return this.projectMemoryKey;
+  }
+
+  private filterStateByScope(scope: Scope): PersistedStore {
+    const memories = this.state.memories.filter((memory) => memory.scope === scope);
+    const memoryIds = new Set(memories.map((memory) => memory.id));
+    const vectors: PersistedStore['vectors'] = {};
+
+    for (const [memoryId, vector] of Object.entries(this.state.vectors)) {
+      if (memoryIds.has(memoryId)) {
+        vectors[memoryId] = vector;
+      }
+    }
+
+    return {
+      version: 1,
+      memories,
+      vectors,
+    };
   }
 
   // --- Scope filter builder ---
@@ -429,6 +487,80 @@ function computeSearchRank(content: string, normalizedQuery: string, queryTerms:
   }
 
   return score > 0 ? -score : Number.POSITIVE_INFINITY;
+}
+
+function mergeStates(...states: PersistedStore[]): PersistedStore {
+  const merged = createEmptyState();
+  for (const state of states) {
+    for (const memory of state.memories) {
+      const existing = merged.memories.find((entry) => entry.id === memory.id);
+      if (!existing) {
+        merged.memories.push(cloneMemory(memory));
+      }
+    }
+    for (const [memoryId, vector] of Object.entries(state.vectors)) {
+      merged.vectors[memoryId] = { ...vector };
+    }
+  }
+  return merged;
+}
+
+function encryptPersistedStore(state: PersistedStore, key: string): string {
+  const keyBytes = deriveEncryptionKey(key);
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', keyBytes, iv);
+  const plaintext = JSON.stringify(state, null, 2);
+  const ciphertext = Buffer.concat([
+    cipher.update(plaintext, 'utf8'),
+    cipher.final(),
+  ]);
+
+  return JSON.stringify({
+    version: 1,
+    iv: iv.toString('base64'),
+    tag: cipher.getAuthTag().toString('base64'),
+    ciphertext: ciphertext.toString('base64'),
+  }, null, 2);
+}
+
+function decryptPersistedStore(raw: string, key: string): Partial<PersistedStore> {
+  const payload = JSON.parse(raw) as {
+    version?: number;
+    iv?: string;
+    tag?: string;
+    ciphertext?: string;
+    memories?: Memory[];
+    vectors?: PersistedStore['vectors'];
+  };
+
+  if (Array.isArray(payload.memories) || payload.vectors) {
+    return {
+      version: 1,
+      memories: Array.isArray(payload.memories) ? payload.memories : [],
+      vectors: normalizePersistedVectors(payload.vectors),
+    };
+  }
+
+  const iv = payload.iv ? Buffer.from(payload.iv, 'base64') : null;
+  const tag = payload.tag ? Buffer.from(payload.tag, 'base64') : null;
+  const ciphertext = payload.ciphertext ? Buffer.from(payload.ciphertext, 'base64') : null;
+
+  if (!iv || !tag || !ciphertext) {
+    throw new Error('Encrypted project-memory payload is invalid or missing required fields.');
+  }
+
+  const decipher = crypto.createDecipheriv('aes-256-gcm', deriveEncryptionKey(key), iv);
+  decipher.setAuthTag(tag);
+  const plainText = Buffer.concat([
+    decipher.update(ciphertext),
+    decipher.final(),
+  ]).toString('utf8');
+
+  return JSON.parse(plainText) as Partial<PersistedStore>;
+}
+
+function deriveEncryptionKey(key: string): Buffer {
+  return crypto.createHash('sha256').update(key).digest().subarray(0, 32);
 }
 
 function hashNormalizedContent(content: string): string {

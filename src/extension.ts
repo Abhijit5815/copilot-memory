@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { Memory, MemoryType } from './lib/memory-domain';
 import { extractHighSignalInsights } from './lib/ingest-policy';
 import { MemoryService } from './lib/memory-service';
-import { SqliteMemoryStore } from './lib/sqlite-store';
+import { MemoryStore } from './lib/memory-store';
 import { SearchEngine } from './lib/search-engine';
 import { createEmbeddingProvider } from './lib/embeddings';
 import { getSettings, getOutputChannel, debugLog } from './lib/settings';
@@ -10,7 +10,11 @@ import { getRepoContainerTag, getProjectName } from './lib/container-tag';
 
 export function activate(context: vscode.ExtensionContext) {
   const settings = getSettings();
-  const store = new SqliteMemoryStore(settings.storageDir || undefined);
+  const store = new MemoryStore(
+    settings.storageDir || undefined,
+    getWorkspaceCwd(),
+    settings.projectMemoryKey || process.env.COPILOT_MEMORY_KEY || undefined,
+  );
 
   const embeddingProvider = createEmbeddingProvider({
     provider: settings.embeddingProvider,
@@ -276,7 +280,7 @@ interface SaveInput {
 
 class SaveMemoryTool implements vscode.LanguageModelTool<SaveInput> {
   constructor(
-    private store: SqliteMemoryStore,
+    private store: MemoryStore,
     private memoryService: MemoryService,
   ) {}
 
@@ -322,7 +326,7 @@ interface SearchInput { query: string }
 
 class SearchMemoryTool implements vscode.LanguageModelTool<SearchInput> {
   constructor(
-    private store: SqliteMemoryStore,
+    private store: MemoryStore,
     private searchEngine: SearchEngine,
   ) {}
 
@@ -360,7 +364,7 @@ class SearchMemoryTool implements vscode.LanguageModelTool<SearchInput> {
 interface ListInput { scope?: 'global' | 'project' }
 
 class ListMemoriesTool implements vscode.LanguageModelTool<ListInput> {
-  constructor(private store: SqliteMemoryStore) {}
+  constructor(private store: MemoryStore) {}
 
   async invoke(
     options: vscode.LanguageModelToolInvocationOptions<ListInput>,
@@ -392,7 +396,7 @@ class ListMemoriesTool implements vscode.LanguageModelTool<ListInput> {
 interface DeleteInput { id: string }
 
 class DeleteMemoryTool implements vscode.LanguageModelTool<DeleteInput> {
-  constructor(private store: SqliteMemoryStore) {}
+  constructor(private store: MemoryStore) {}
 
   async invoke(
     options: vscode.LanguageModelToolInvocationOptions<DeleteInput>,
@@ -416,7 +420,7 @@ class DeleteMemoryTool implements vscode.LanguageModelTool<DeleteInput> {
 }
 
 class RefreshMemoryTool implements vscode.LanguageModelTool<Record<string, never>> {
-  constructor(private store: SqliteMemoryStore) {}
+  constructor(private store: MemoryStore) {}
 
   async invoke(
     _options: vscode.LanguageModelToolInvocationOptions<Record<string, never>>,

@@ -5,7 +5,7 @@ import {
   SaveMemoryResult,
   Scope,
 } from './memory-domain';
-import { SqliteMemoryStore } from './sqlite-store';
+import { MemoryStore } from './memory-store';
 
 export interface WorkspaceMemoryContext {
   cwd: string;
@@ -19,7 +19,7 @@ export interface SaveMemoryRequest {
 }
 
 export class MemoryService {
-  constructor(private store: SqliteMemoryStore) {}
+  constructor(private store: MemoryStore) {}
 
   saveFromWorkspace(
     request: SaveMemoryRequest,

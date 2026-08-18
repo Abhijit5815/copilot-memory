@@ -29,7 +29,7 @@ async function main() {
     format: 'cjs',
     platform: 'node',
     outfile: 'dist/extension.js',
-    external: ['vscode', 'better-sqlite3'],
+    external: ['vscode'],
     sourcemap: !production,
     minify: production,
     sourcesContent: false,

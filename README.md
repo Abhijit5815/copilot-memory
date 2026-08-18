@@ -1,6 +1,6 @@
 # Copilot Memory
 
-Persistent local memory for GitHub Copilot Chat backed by SQLite + FTS5, with optional hybrid vector search. Copilot can save and recall information across sessions automatically — no special commands needed. All data stays on your machine.
+Persistent local memory for GitHub Copilot Chat (local by default), backed by a portable local JSON store, with optional hybrid vector search. For team workflows you can enable repo-scoped project memories — these are encrypted and stored in the repository so they can be committed and shared securely across teammates. Copilot can save and recall information across sessions without manual storage commands. All global memories stay on your machine; project-scoped memories are encrypted for safe repo sharing.
 
 ## Install
 
@@ -24,9 +24,8 @@ or by searching for the extension in the VS Code Extensions view.
 
 ### Publish to Marketplace
 
-1. Update `publisher` in `package.json` to your actual Marketplace publisher ID.
-2. Login once with `npx @vscode/vsce login <publisher>`.
-3. Publish with:
+1. Login once with `npx @vscode/vsce login AbhijitKasana`.
+2. Publish with:
 
 ```bash
 npm run publish:vsce
@@ -47,10 +46,9 @@ This repository includes:
 
 Setup steps:
 
-1. Set `publisher` in `package.json` to your Marketplace publisher ID.
-2. Add repository secret `VSCE_PAT` with Marketplace Manage scope.
-3. Bump `version` in `package.json`.
-4. Create and push a matching git tag:
+1. Add repository secret `VSCE_PAT` with Marketplace Manage scope.
+2. Bump `version` in `package.json`.
+3. Create and push a matching git tag:
 
 ```bash
 git tag v0.0.2
@@ -61,14 +59,16 @@ The release workflow validates tag/version alignment, runs tests, publishes to M
 
 ## Usage
 
-Just chat with Copilot normally:
+Copilot can use the memory tools automatically during chat, or you can invoke them explicitly.
+
+Examples:
 
 ```
 "Remember that our API uses rate limiting of 100 req/min"
-→ Copilot saves it automatically
+→ Copilot can save it to memory
 
 "What did we decide about rate limiting?"
-→ Copilot searches your memories and uses them in its answer
+→ Copilot can search saved memories and use them in its answer
 ```
 
 To force a tool, type `#` in chat and pick one:
@@ -82,7 +82,7 @@ To force a tool, type `#` in chat and pick one:
 | Tool | What it does |
 |---|---|
 | `copilot-memory_save` | Save a note with optional type metadata (global or project-scoped) |
-| `copilot-memory_search` | Search saved memories (FTS5 with optional hybrid vector search) |
+| `copilot-memory_search` | Search saved memories (portable token-based search with optional hybrid vector search) |
 | `copilot-memory_list` | List all memories |
 | `copilot-memory_delete` | Delete a memory by ID |
 | `copilot-memory_refresh` | Force refresh and return memory fingerprints |
@@ -103,7 +103,9 @@ Auto-ingest now defaults to a selective strategy that captures high-signal insig
 ### Scopes
 
 - **Global** — memories available across all repositories
-- **Project** — memories scoped to the current git repository
+- **Project** — memories scoped to the current git repository and stored in a repo-local encrypted file for push/pull sharing across the team
+
+Project memories are now written to `.copilot-memory/project-memory.enc.json` inside the repo itself, encrypted with a shared secret key so the file can be committed and pulled by teammates in the same repo. Global memories remain stored in the local home-directory store.
 
 ### Command Palette
 
@@ -118,19 +120,21 @@ Auto-ingest now defaults to a selective strategy that captures high-signal insig
 
 ## Storage
 
-Memories are stored in a SQLite database at `~/.copilot-memory/memory.db` using WAL mode for concurrent reads. FTS5 provides full-text search with porter stemming.
+Memories are stored in a portable JSON file at `~/.copilot-memory/memory-store.json`. This avoids shipping native binaries, so the extension can run across macOS, Windows, and Linux from a single Marketplace build.
+
+Legacy `~/.copilot-memory/memory.db` files are not migrated automatically yet.
 
 ```
 ~/.copilot-memory/
-  memory.db   ← SQLite database (memories, FTS index, vectors)
+  memory-store.json   ← local memory store (memories and vectors)
 ```
 
 ### Search Modes
 
 | Mode | Description |
 |---|---|
-| `sparse` | FTS5 full-text search only (default, zero config) |
-| `hybrid-cloud` | FTS5 + cloud embedding vectors (e.g. OpenAI), fused via Reciprocal Rank Fusion |
+| `sparse` | Portable token-based search only (default, zero config) |
+| `hybrid-cloud` | Token search + cloud embedding vectors (e.g. OpenAI), fused via Reciprocal Rank Fusion |
 | `auto` | Uses hybrid if an embedding provider is configured, otherwise falls back to sparse |
 
 ## Settings
@@ -138,7 +142,8 @@ Memories are stored in a SQLite database at `~/.copilot-memory/memory.db` using 
 | Setting | Default | Description |
 |---|---|---|
 | `copilotMemory.maxContextItems` | `5` | Max results returned per search |
-| `copilotMemory.storageDir` | `~/.copilot-memory` | Storage directory |
+| `copilotMemory.storageDir` | `~/.copilot-memory` | Storage directory for global memories |
+| `copilotMemory.projectMemoryKey` | | Shared secret used to encrypt repo-scoped project memories before committing them to Git |
 | `copilotMemory.debug` | `false` | Debug logging |
 | `copilotMemory.autoIngestOnSave` | `true` | Enable save-time memory ingestion |
 | `copilotMemory.autoIngestStrategy` | `selective` | Ingest mode: `selective` for high-signal insights, `snapshot` for raw snippets |
@@ -152,6 +157,28 @@ Memories are stored in a SQLite database at `~/.copilot-memory/memory.db` using 
 | `copilotMemory.embeddingModel` | | Embedding model (e.g. `text-embedding-3-small`) |
 | `copilotMemory.embeddingDimensions` | `0` | Embedding dimensions (0 = provider default) |
 | `copilotMemory.embeddingBaseUrl` | | Custom base URL for the embedding API |
+
+### Repo-shared project memories
+
+For team-shared project memories, set a secret key in VS Code settings or in the environment:
+
+```bash
+export COPILOT_MEMORY_KEY="your-shared-secret-key"
+```
+
+Then set:
+
+- `copilotMemory.projectMemoryKey`: same value on each teammate machine
+
+The project-scoped file is stored in the repo at:
+
+```text
+.copilot-memory/project-memory.enc.json
+```
+
+Note: this repository intentionally stores the encrypted project memory file inside `.copilot-memory/` so teammates can share project-scoped memories. Do not add `.copilot-memory/` to `.gitignore` unless you deliberately want to stop committing the encrypted project memory file.
+
+This file is encrypted, so it can safely be committed, pushed, and pulled across the same repository without exposing raw memory contents.
 
 ### Hybrid Search Setup
 

@@ -1,5 +1,5 @@
 import { Memory, Scope } from './memory-domain';
-import { SqliteMemoryStore } from './sqlite-store';
+import { MemoryStore } from './memory-store';
 import { EmbeddingProvider, NoopEmbeddingProvider } from './embeddings';
 import { applyRankingBoosts } from './ranking';
 import { debugLog, SearchMode } from './settings';
@@ -19,7 +19,7 @@ export interface SearchResult {
 
 export class SearchEngine {
   constructor(
-    private store: SqliteMemoryStore,
+    private store: MemoryStore,
     private embeddingProvider: EmbeddingProvider = new NoopEmbeddingProvider(),
   ) {}
 

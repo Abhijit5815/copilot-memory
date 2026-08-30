@@ -48,7 +48,7 @@ If you'd rather do it by hand:
 npm install        # get the dependencies
 npm run compile     # build it
 npm run vsix        # package it into a .vsix file
-code --install-extension copilot-memory-0.0.2.vsix
+code --install-extension copilot-memory-0.0.3.vsix
 ```
 
 ---
@@ -118,20 +118,51 @@ If you never plan to share a project with teammates, you can skip this —
 Copilot Memory generates a private key for you automatically and everything
 just works locally.
 
-If you **do** want your team to read the same shared notes:
+If you **do** want your team to read the same shared notes, treat this
+exactly like sharing a database password or an API key — because that's
+what it is:
 
-1. One person opens the Command Palette and runs
-   **`Copilot Memory: Set Project Memory Key`** → choose **"Generate a new
-   key"**. You'll get a random code.
-2. Share that code with your team through a private channel — Slack DM, a
-   password manager, 1Password, etc. **Never paste it into a file that gets
-   committed to git** — that would be like locking a door and taping the
-   key to it.
-3. Everyone else on the team runs the same command, but chooses
-   **"Enter a shared key"** and pastes in the code from step 1.
+1. **Before anyone else touches this project's memory**, one person opens
+   the Command Palette and runs **`Copilot Memory: Set Project Memory Key`**
+   → **"Generate a new key"**. You'll get a random code.
+2. **Immediately save that code somewhere durable** — a team password
+   manager entry (1Password, Bitwarden, etc.) is ideal. **Never paste it
+   into a file that gets committed to git** — that would be like locking a
+   door and taping the key to it.
+3. Share it with the team through a private channel (the password manager
+   entry, a Slack DM — not email, not a doc that gets shared broadly).
+4. Everyone else on the team runs the same command, but chooses
+   **"Enter a shared key"** and pastes in the code from step 1. If they
+   mistype it, Copilot Memory checks the key against the existing project
+   file right away and tells them — it won't let a typo silently create a
+   second, broken copy.
 
 Now everyone's copy of the extension locks and unlocks the shared notebook
 with the same key, and it's safe to commit `.copilot-memory/` to the repo.
+
+**If you forgot to save the key**, or a new teammate needs it, anyone whose
+copy of the extension still works can run **`Copilot Memory: Set Project
+Memory Key`** → **"Show the current key"** (or the standalone
+**`Copilot Memory: Show Project Memory Key`** command) to see and re-copy
+it — you don't need to remember it from generation time, as long as at
+least one working copy exists somewhere.
+
+**If everyone loses the key** — every machine that had it wiped, nobody
+saved it anywhere else — that project's notebook genuinely can't be
+recovered. This isn't a bug; it's what "encrypted" means, the same way a
+lost password-manager master password can't be recovered by the password
+manager either. The mitigations above (save it the moment you generate it,
+make "Show the current key" part of onboarding a new teammate) are there to
+make that close to a non-issue in practice. If the worst happens anyway,
+nothing else is affected — your personal global notebook and any other
+project's notebook are encrypted with different keys and are unaffected.
+
+**If someone accidentally generates a second key for a repo that already
+has notes** (skipping step 4 above), Copilot Memory now catches this: it
+won't silently invent a new key for a repo it can already see has existing
+project memory. Instead it'll tell that person to get the real key from a
+teammate via `Show Project Memory Key`, and "Generate a new key" asks for
+confirmation before overwriting an existing setup.
 
 ---
 

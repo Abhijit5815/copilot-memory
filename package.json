@@ -2,7 +2,7 @@
   "name": "copilot-memory",
   "displayName": "Copilot Memory",
   "description": "Persistent local memory for GitHub Copilot Chat across sessions",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "publisher": "AbhijitKasana",
   "license": "MIT",
   "icon": "resources/icon.png",
@@ -195,6 +195,10 @@
         "title": "Copilot Memory: Set Project Memory Key"
       },
       {
+        "command": "copilot-memory.showProjectMemoryKey",
+        "title": "Copilot Memory: Show Project Memory Key"
+      },
+      {
         "command": "copilot-memory.setEmbeddingApiKey",
         "title": "Copilot Memory: Set Embedding API Key"
       },
@@ -233,7 +237,10 @@
         },
         "copilotMemory.autoIngestStrategy": {
           "type": "string",
-          "enum": ["selective", "snapshot"],
+          "enum": [
+            "selective",
+            "snapshot"
+          ],
           "default": "selective",
           "description": "Ingest strategy: selective stores high-signal insights, snapshot stores raw file snippets"
         },
@@ -274,19 +281,29 @@
         },
         "copilotMemory.defaultSaveScope": {
           "type": "string",
-          "enum": ["global", "project"],
+          "enum": [
+            "global",
+            "project"
+          ],
           "default": "project",
           "description": "Default scope when saving memories (global = cross-repo, project = current repo)"
         },
         "copilotMemory.searchMode": {
           "type": "string",
-          "enum": ["sparse", "hybrid-cloud", "auto"],
+          "enum": [
+            "sparse",
+            "hybrid-cloud",
+            "auto"
+          ],
           "default": "auto",
           "description": "Search retrieval mode. sparse = token-based search only, hybrid-cloud = token search + cloud embeddings, auto = best available"
         },
         "copilotMemory.embeddingProvider": {
           "type": "string",
-          "enum": ["none", "openai"],
+          "enum": [
+            "none",
+            "openai"
+          ],
           "default": "none",
           "description": "Embedding provider for hybrid search"
         },

@@ -423,6 +423,41 @@ export class MemoryStore {
   }
 }
 
+/** Path to this repo's encrypted project-memory file, without requiring a MemoryStore instance. */
+export function projectMemoryFilePath(projectRoot: string): string {
+  return path.join(projectRoot, '.copilot-memory', PROJECT_STORE_FILENAME);
+}
+
+/**
+ * Whether this repo already has a project-memory file on disk - i.e. whether someone
+ * (possibly you, on another machine) has already saved project-scoped memories here.
+ * Used to avoid silently generating a second, incompatible key for a repo that already
+ * has one (see lib/secrets.ts).
+ */
+export function projectMemoryFileExists(projectRoot: string): boolean {
+  return fs.existsSync(projectMemoryFilePath(projectRoot));
+}
+
+/**
+ * Checks whether `key` can decrypt this repo's existing project-memory file, without
+ * constructing a full MemoryStore. Returns true if there's nothing to verify against yet
+ * (no project memory saved here so far) - any key is "correct" for a file that doesn't
+ * exist. Used to catch a mistyped/wrong shared key immediately, rather than only
+ * discovering it the next time the store tries to load.
+ */
+export function verifyProjectMemoryKey(projectRoot: string, key: string): boolean {
+  const filePath = projectMemoryFilePath(projectRoot);
+  if (!fs.existsSync(filePath)) return true;
+
+  try {
+    const raw = fs.readFileSync(filePath, 'utf8');
+    decryptPersistedStore(raw, key);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // --- Internal helpers ---
 
 interface PersistedVector {

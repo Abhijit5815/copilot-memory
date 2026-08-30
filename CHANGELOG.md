@@ -2,6 +2,21 @@
 
 All notable changes to Copilot Memory are documented here.
 
+## 0.0.3
+
+Fixes two team-sharing gaps in the project memory key model:
+
+- Losing the key: added `Copilot Memory: Show Project Memory Key`, so anyone
+  who still has working access can retrieve and re-share the key, instead of
+  it only ever being shown once at generation time.
+- Independently generated keys silently breaking sync: `Set Project Memory
+  Key` now refuses to auto-generate a key for a repo that already has saved
+  project memory (you'd just create a second, incompatible key) and instead
+  points you at the "Enter a shared key" flow with a clear explanation.
+  Pasting a key is now verified against the existing file immediately, so a
+  typo is caught on the spot instead of surfacing as a confusing failure
+  later.
+
 ## 0.0.2
 
 Reliability and security hardening pass:

@@ -12,6 +12,7 @@ import {
   resolveProjectMemoryKey,
   setEmbeddingApiKey,
   setProjectMemoryKey,
+  showProjectMemoryKey,
   clearEmbeddingApiKey,
 } from './lib/secrets';
 
@@ -87,6 +88,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         { label: '$(list-unordered) Show all memories', description: 'Open your global and project memory list', action: 'showAll' },
         { label: '$(refresh) Refresh memory state', description: 'Refresh counts and fingerprints', action: 'refresh' },
         { label: '$(key) Set project memory key', description: 'Configure the shared encryption key for this repo', action: 'setProjectMemoryKey' },
+        { label: '$(eye) Show project memory key', description: 'Recover or share this repo\'s current key', action: 'showProjectMemoryKey' },
         { label: '$(key) Set embedding API key', description: 'Store your embedding provider key securely', action: 'setEmbeddingApiKey' },
       ], {
         placeHolder: 'Copilot Memory quick actions',
@@ -109,6 +111,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           break;
         case 'setProjectMemoryKey':
           await vscode.commands.executeCommand('copilot-memory.setProjectMemoryKey');
+          break;
+        case 'showProjectMemoryKey':
+          await vscode.commands.executeCommand('copilot-memory.showProjectMemoryKey');
           break;
         case 'setEmbeddingApiKey':
           await vscode.commands.executeCommand('copilot-memory.setEmbeddingApiKey');
@@ -263,7 +268,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(
     vscode.commands.registerCommand('copilot-memory.setProjectMemoryKey', async () => {
       const keyCwd = getWorkspaceCwd();
-      await setProjectMemoryKey(context, getRepoContainerTag(keyCwd));
+      await setProjectMemoryKey(context, getRepoContainerTag(keyCwd), keyCwd);
+    }),
+    vscode.commands.registerCommand('copilot-memory.showProjectMemoryKey', async () => {
+      const keyCwd = getWorkspaceCwd();
+      await showProjectMemoryKey(context, getRepoContainerTag(keyCwd));
     }),
     vscode.commands.registerCommand('copilot-memory.setEmbeddingApiKey', async () => {
       await setEmbeddingApiKey(context);
@@ -295,7 +304,7 @@ async function createMemoryStore(
   const explicitKey = settings.projectMemoryKey || undefined;
 
   try {
-    const projectMemoryKey = await resolveProjectMemoryKey(context, repoContainerTag, explicitKey);
+    const projectMemoryKey = await resolveProjectMemoryKey(context, repoContainerTag, explicitKey, cwd);
     return new MemoryStore(settings.storageDir || undefined, cwd, projectMemoryKey);
   } catch (err) {
     void vscode.window.showErrorMessage(

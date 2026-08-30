@@ -1,7 +1,7 @@
 /**
  * Lightweight heuristics to keep obvious credentials out of stored memories.
  *
- * Copilot Memory's auto-ingest can capture raw file content (snapshot mode) or
+ * Memory Book's auto-ingest can capture raw file content (snapshot mode) or
  * lines extracted from saved files (selective mode), and project-scoped
  * memories are, by design, meant to be committed to git and shared with a
  * team. Without a check here, saving a file that happens to contain a live

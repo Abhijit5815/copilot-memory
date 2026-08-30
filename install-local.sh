@@ -29,7 +29,7 @@ if ! npx @vscode/vsce package; then
 	exit 1
 fi
 
-VSIX=$(ls -t copilot-memory-*.vsix 2>/dev/null | head -n 1)
+VSIX=$(ls -t memory-book-*.vsix 2>/dev/null | head -n 1)
 
 if [ -z "$VSIX" ]; then
 	echo "Packaging succeeded but no VSIX file was found."

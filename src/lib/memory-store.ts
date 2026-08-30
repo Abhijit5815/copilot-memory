@@ -58,7 +58,7 @@ export class MemoryStore {
     // Callers (see extension.ts / lib/secrets.ts) resolve a real key - either an
     // explicit team-shared secret or a randomly generated local one - before
     // constructing a store with a projectRoot.
-    this.projectMemoryKey = projectMemoryKey || process.env.COPILOT_MEMORY_KEY || null;
+    this.projectMemoryKey = projectMemoryKey || process.env.MEMORY_BOOK_KEY || process.env.COPILOT_MEMORY_KEY || null;
 
     const repoMemoryDir = projectRoot ? path.join(projectRoot, '.copilot-memory') : null;
     this.projectStorePath = repoMemoryDir ? path.join(repoMemoryDir, PROJECT_STORE_FILENAME) : null;
@@ -99,9 +99,9 @@ export class MemoryStore {
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       throw new Error(
-        `Copilot Memory: failed to load ${scope} memory from ${filePath} (${reason}). ` +
+        `Memory Book: failed to load ${scope} memory from ${filePath} (${reason}). ` +
         (encrypted
-          ? 'This usually means copilotMemory.projectMemoryKey does not match the key the file was encrypted with, or the file is corrupted.'
+          ? 'This usually means memoryBook.projectMemoryKey does not match the key the file was encrypted with, or the file is corrupted.'
           : 'The file may be corrupted.'),
       );
     }
@@ -155,8 +155,8 @@ export class MemoryStore {
   private getProjectMemoryKey(): string {
     if (!this.projectMemoryKey) {
       throw new Error(
-        'Copilot Memory: project memory encryption key is missing. Set copilotMemory.projectMemoryKey, ' +
-        'the COPILOT_MEMORY_KEY environment variable, or run "Copilot Memory: Set Project Memory Key".',
+        'Memory Book: project memory encryption key is missing. Set memoryBook.projectMemoryKey, ' +
+        'the MEMORY_BOOK_KEY environment variable, or run "Memory Book: Set Project Memory Key".',
       );
     }
     return this.projectMemoryKey;
@@ -405,6 +405,66 @@ export class MemoryStore {
       hash,
       count: memories.length,
       updatedAt: latest,
+    };
+  }
+
+  // --- External change notifications ---
+
+  /**
+   * Watches the underlying store file(s) on disk and invokes `onChange`
+   * whenever something might have changed them from outside this exact
+   * MemoryStore instance - another VS Code window sharing the same store,
+   * or (just as commonly) a Copilot Chat tool call in *this* window, since
+   * the Language Model Tools only touch the store directly and have no
+   * reference to any UI to refresh themselves. Without this, a save made
+   * via chat (the normal way memories get created - see README) or via
+   * auto-ingest-on-save can leave a tree view / status bar showing stale
+   * counts until something else happens to trigger a manual refresh.
+   *
+   * Debounced (a single write touches the file more than once via the
+   * temp-file-then-rename pattern used by persist()), and watches each
+   * file's containing directory rather than the file itself - watching a
+   * file path directly can silently stop working across a rename on some
+   * platforms/filesystems, which is exactly how persist() writes.
+   */
+  onExternalChange(onChange: () => void): { dispose(): void } {
+    const watchers: fs.FSWatcher[] = [];
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const scheduleNotify = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        debounceTimer = null;
+        onChange();
+      }, 150);
+    };
+
+    const watchTargets = [this.storePath, this.projectStorePath].filter((p): p is string => !!p);
+    for (const filePath of watchTargets) {
+      try {
+        const dir = path.dirname(filePath);
+        const base = path.basename(filePath);
+        const watcher = fs.watch(dir, (_eventType, filename) => {
+          if (filename === base || filename === `${base}.tmp`) scheduleNotify();
+        });
+        watchers.push(watcher);
+      } catch (err) {
+        // Best-effort: if this platform/filesystem can't watch here, we
+        // just fall back to whatever explicit refresh calls already exist.
+        debugLog('Failed to watch memory store file for external changes', {
+          filePath,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    return {
+      dispose: () => {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        for (const watcher of watchers) {
+          try { watcher.close(); } catch { /* already closed */ }
+        }
+      },
     };
   }
 

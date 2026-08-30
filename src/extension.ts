@@ -45,20 +45,29 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const searchEngine = new SearchEngine(store, embeddingProvider);
   const memoryService = new MemoryService(store);
   const memoryStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-  memoryStatusBarItem.command = 'copilot-memory.quickActions';
-  memoryStatusBarItem.tooltip = 'Copilot Memory';
+  memoryStatusBarItem.command = 'memory-book.quickActions';
+  memoryStatusBarItem.tooltip = 'Memory Book';
   context.subscriptions.push(memoryStatusBarItem);
 
   const memoryTreeProvider = new MemoryTreeProvider(store);
-  context.subscriptions.push(vscode.window.registerTreeDataProvider('copilot-memory-view', memoryTreeProvider));
+  context.subscriptions.push(vscode.window.registerTreeDataProvider('memory-book-view', memoryTreeProvider));
+
+  // Single source of truth for "something might have changed, re-render the
+  // UI" - used both by explicit user actions below (for instant feedback)
+  // and by store.onExternalChange (for saves that happen with no UI in the
+  // loop at all: a Copilot Chat tool call, auto-ingest-on-save, or another
+  // VS Code window sharing this same store).
+  const refreshAll = () => {
+    memoryTreeProvider.refresh();
+    updateMemoryStatusBar(memoryStatusBarItem, store);
+  };
+  context.subscriptions.push(store.onExternalChange(refreshAll));
+
   context.subscriptions.push(
-    vscode.commands.registerCommand('copilot-memory.refreshView', () => {
-      memoryTreeProvider.refresh();
-      updateMemoryStatusBar(memoryStatusBarItem, store);
-    }),
+    vscode.commands.registerCommand('memory-book.refreshView', refreshAll),
   );
 
-  const onboardingKey = 'copilot-memory.onboarded-v1';
+  const onboardingKey = 'memory-book.onboarded-v1';
   if (!context.globalState.get(onboardingKey, false)) {
     void showMemoryOnboarding(context, store, memoryService);
     void context.globalState.update(onboardingKey, true);
@@ -69,11 +78,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // --- Language Model Tools ---
 
   context.subscriptions.push(
-    vscode.lm.registerTool('copilot-memory_save', new SaveMemoryTool(store, memoryService)),
-    vscode.lm.registerTool('copilot-memory_search', new SearchMemoryTool(store, searchEngine)),
-    vscode.lm.registerTool('copilot-memory_list', new ListMemoriesTool(store)),
-    vscode.lm.registerTool('copilot-memory_delete', new DeleteMemoryTool(store)),
-    vscode.lm.registerTool('copilot-memory_refresh', new RefreshMemoryTool(store)),
+    vscode.lm.registerTool('memory-book_save', new SaveMemoryTool(store, memoryService)),
+    vscode.lm.registerTool('memory-book_search', new SearchMemoryTool(store, searchEngine)),
+    vscode.lm.registerTool('memory-book_list', new ListMemoriesTool(store)),
+    vscode.lm.registerTool('memory-book_delete', new DeleteMemoryTool(store)),
+    vscode.lm.registerTool('memory-book_refresh', new RefreshMemoryTool(store)),
   );
 
   setupAutoIngestOnSave(context, memoryService);
@@ -81,7 +90,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // --- Command Palette ---
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('copilot-memory.quickActions', async () => {
+    vscode.commands.registerCommand('memory-book.quickActions', async () => {
       const action = await vscode.window.showQuickPick([
         { label: '$(search) Search memories', description: 'Find relevant stored context', action: 'search' },
         { label: '$(save) Save selection to memory', description: 'Remember the current selected text', action: 'saveSelection' },
@@ -91,38 +100,38 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         { label: '$(eye) Show project memory key', description: 'Recover or share this repo\'s current key', action: 'showProjectMemoryKey' },
         { label: '$(key) Set embedding API key', description: 'Store your embedding provider key securely', action: 'setEmbeddingApiKey' },
       ], {
-        placeHolder: 'Copilot Memory quick actions',
+        placeHolder: 'Memory Book quick actions',
       });
 
       if (!action) return;
 
       switch (action.action) {
         case 'search':
-          await vscode.commands.executeCommand('copilot-memory.search');
+          await vscode.commands.executeCommand('memory-book.search');
           break;
         case 'saveSelection':
-          await vscode.commands.executeCommand('copilot-memory.saveSelection');
+          await vscode.commands.executeCommand('memory-book.saveSelection');
           break;
         case 'showAll':
-          await vscode.commands.executeCommand('copilot-memory.showAll');
+          await vscode.commands.executeCommand('memory-book.showAll');
           break;
         case 'refresh':
-          await vscode.commands.executeCommand('copilot-memory.refresh');
+          await vscode.commands.executeCommand('memory-book.refresh');
           break;
         case 'setProjectMemoryKey':
-          await vscode.commands.executeCommand('copilot-memory.setProjectMemoryKey');
+          await vscode.commands.executeCommand('memory-book.setProjectMemoryKey');
           break;
         case 'showProjectMemoryKey':
-          await vscode.commands.executeCommand('copilot-memory.showProjectMemoryKey');
+          await vscode.commands.executeCommand('memory-book.showProjectMemoryKey');
           break;
         case 'setEmbeddingApiKey':
-          await vscode.commands.executeCommand('copilot-memory.setEmbeddingApiKey');
+          await vscode.commands.executeCommand('memory-book.setEmbeddingApiKey');
           break;
       }
 
       updateMemoryStatusBar(memoryStatusBarItem, store);
     }),
-    vscode.commands.registerCommand('copilot-memory.saveSelection', async () => {
+    vscode.commands.registerCommand('memory-book.saveSelection', async () => {
       const editor = vscode.window.activeTextEditor;
       if (!editor) return vscode.window.showWarningMessage('No active editor.');
 
@@ -142,13 +151,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         memoryTreeProvider.refresh();
         updateMemoryStatusBar(memoryStatusBarItem, store);
       } catch (err) {
-        vscode.window.showErrorMessage(`Copilot Memory: failed to save selection - ${describeError(err)}`);
+        vscode.window.showErrorMessage(`Memory Book: failed to save selection - ${describeError(err)}`);
       }
     }),
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('copilot-memory.search', async () => {
+    vscode.commands.registerCommand('memory-book.search', async () => {
       const query = await vscode.window.showInputBox({
         prompt: 'Search your memories',
         placeHolder: 'e.g., auth flow, bug fix',
@@ -177,13 +186,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         await vscode.window.showTextDocument(doc, { preview: true });
         memoryTreeProvider.refresh();
       } catch (err) {
-        vscode.window.showErrorMessage(`Copilot Memory: search failed - ${describeError(err)}`);
+        vscode.window.showErrorMessage(`Memory Book: search failed - ${describeError(err)}`);
       }
     }),
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('copilot-memory.showAll', async () => {
+    vscode.commands.registerCommand('memory-book.showAll', async () => {
       try {
         const showCwd = getWorkspaceCwd();
         const projectId = getRepoContainerTag(showCwd);
@@ -207,13 +216,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         });
         await vscode.window.showTextDocument(doc, { preview: true });
       } catch (err) {
-        vscode.window.showErrorMessage(`Copilot Memory: failed to list memories - ${describeError(err)}`);
+        vscode.window.showErrorMessage(`Memory Book: failed to list memories - ${describeError(err)}`);
       }
     }),
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('copilot-memory.clearAll', async () => {
+    vscode.commands.registerCommand('memory-book.clearAll', async () => {
       const choice = await vscode.window.showWarningMessage(
         'Clear all memories for this project?',
         { modal: true },
@@ -231,13 +240,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         memoryTreeProvider.refresh();
         updateMemoryStatusBar(memoryStatusBarItem, store);
       } catch (err) {
-        vscode.window.showErrorMessage(`Copilot Memory: failed to clear memories - ${describeError(err)}`);
+        vscode.window.showErrorMessage(`Memory Book: failed to clear memories - ${describeError(err)}`);
       }
     }),
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('copilot-memory.refresh', async () => {
+    vscode.commands.registerCommand('memory-book.refresh', async () => {
       try {
         const refreshCwd = getWorkspaceCwd();
         const projectId = getRepoContainerTag(refreshCwd);
@@ -249,13 +258,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         updateMemoryStatusBar(memoryStatusBarItem, store);
         vscode.window.showInformationMessage(message);
       } catch (err) {
-        vscode.window.showErrorMessage(`Copilot Memory: refresh failed - ${describeError(err)}`);
+        vscode.window.showErrorMessage(`Memory Book: refresh failed - ${describeError(err)}`);
       }
     }),
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('copilot-memory.backfillVectors', async () => {
+    vscode.commands.registerCommand('memory-book.backfillVectors', async () => {
       try {
         const count = await searchEngine.backfillVectors();
         vscode.window.showInformationMessage(`Backfilled ${count} memory vectors.`);
@@ -266,18 +275,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('copilot-memory.setProjectMemoryKey', async () => {
+    vscode.commands.registerCommand('memory-book.setProjectMemoryKey', async () => {
       const keyCwd = getWorkspaceCwd();
       await setProjectMemoryKey(context, getRepoContainerTag(keyCwd), keyCwd);
     }),
-    vscode.commands.registerCommand('copilot-memory.showProjectMemoryKey', async () => {
+    vscode.commands.registerCommand('memory-book.showProjectMemoryKey', async () => {
       const keyCwd = getWorkspaceCwd();
       await showProjectMemoryKey(context, getRepoContainerTag(keyCwd));
     }),
-    vscode.commands.registerCommand('copilot-memory.setEmbeddingApiKey', async () => {
+    vscode.commands.registerCommand('memory-book.setEmbeddingApiKey', async () => {
       await setEmbeddingApiKey(context);
     }),
-    vscode.commands.registerCommand('copilot-memory.clearEmbeddingApiKey', async () => {
+    vscode.commands.registerCommand('memory-book.clearEmbeddingApiKey', async () => {
       await clearEmbeddingApiKey(context);
     }),
   );
@@ -308,14 +317,14 @@ async function createMemoryStore(
     return new MemoryStore(settings.storageDir || undefined, cwd, projectMemoryKey);
   } catch (err) {
     void vscode.window.showErrorMessage(
-      `Copilot Memory: could not load this repo's project memory (${describeError(err)}). ` +
+      `Memory Book: could not load this repo's project memory (${describeError(err)}). ` +
       'Project memory is disabled for this session; your global memories are unaffected.',
     );
     try {
       return new MemoryStore(settings.storageDir || undefined, undefined, undefined);
     } catch (fatalErr) {
       void vscode.window.showErrorMessage(
-        `Copilot Memory: failed to initialize memory storage - ${describeError(fatalErr)}. The extension will not function this session.`,
+        `Memory Book: failed to initialize memory storage - ${describeError(fatalErr)}. The extension will not function this session.`,
       );
       throw fatalErr;
     }
@@ -333,7 +342,7 @@ function updateMemoryStatusBar(statusBarItem: vscode.StatusBarItem, store: Memor
   const projectCount = store.getAll('project', projectId).length;
 
   statusBarItem.text = `$(database) Memory ${globalCount + projectCount}`;
-  statusBarItem.tooltip = `Copilot Memory\nGlobal: ${globalCount}\nProject: ${projectCount}`;
+  statusBarItem.tooltip = `Memory Book\nGlobal: ${globalCount}\nProject: ${projectCount}`;
   statusBarItem.show();
 }
 
@@ -389,7 +398,7 @@ class MemoryTreeProvider implements vscode.TreeDataProvider<MemoryTreeItem> {
       item.description = element.memory?.type || 'memory';
       item.tooltip = element.memory?.content || '';
       item.command = {
-        command: 'copilot-memory.showAll',
+        command: 'memory-book.showAll',
         title: 'Open memory list',
       };
     }
@@ -423,15 +432,15 @@ async function showMemoryOnboarding(
   _memoryService: MemoryService,
 ): Promise<void> {
   const choice = await vscode.window.showInformationMessage(
-    'Copilot Memory is ready. Save useful context, then search it later from memory or chat.',
+    'Memory Book is ready. Save useful context, then search it later from memory or chat.',
     'Open Quick Actions',
     'Save Selection',
   );
 
   if (choice === 'Open Quick Actions') {
-    await vscode.commands.executeCommand('copilot-memory.quickActions');
+    await vscode.commands.executeCommand('memory-book.quickActions');
   } else if (choice === 'Save Selection') {
-    await vscode.commands.executeCommand('copilot-memory.saveSelection');
+    await vscode.commands.executeCommand('memory-book.saveSelection');
   }
 }
 

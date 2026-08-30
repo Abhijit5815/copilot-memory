@@ -53,7 +53,7 @@ const SECRET_FILE_IGNORE_GLOBS = [
 const DEFAULT_SETTINGS: Settings = {
   maxContextItems: 5,
   storageDir: '',
-  projectMemoryKey: process.env.COPILOT_MEMORY_KEY || '',
+  projectMemoryKey: process.env.MEMORY_BOOK_KEY || process.env.COPILOT_MEMORY_KEY || '',
   debug: false,
   autoIngestOnSave: true,
   autoIngestStrategy: 'selective',
@@ -81,11 +81,11 @@ export function getSettings(): Settings {
     return DEFAULT_SETTINGS;
   }
 
-  const config = vscode.workspace.getConfiguration('copilotMemory');
+  const config = vscode.workspace.getConfiguration('memoryBook');
   return {
     maxContextItems: config.get<number>('maxContextItems', DEFAULT_SETTINGS.maxContextItems),
     storageDir: config.get<string>('storageDir', DEFAULT_SETTINGS.storageDir),
-    projectMemoryKey: config.get<string>('projectMemoryKey', process.env.COPILOT_MEMORY_KEY || DEFAULT_SETTINGS.projectMemoryKey),
+    projectMemoryKey: config.get<string>('projectMemoryKey', process.env.MEMORY_BOOK_KEY || process.env.COPILOT_MEMORY_KEY || DEFAULT_SETTINGS.projectMemoryKey),
     debug: config.get<boolean>('debug', DEFAULT_SETTINGS.debug),
     autoIngestOnSave: config.get<boolean>('autoIngestOnSave', DEFAULT_SETTINGS.autoIngestOnSave),
     autoIngestStrategy: config.get<AutoIngestStrategy>('autoIngestStrategy', DEFAULT_SETTINGS.autoIngestStrategy),
@@ -121,7 +121,7 @@ export function getOutputChannel(): OutputChannelLike {
   }
 
   if (!outputChannel) {
-    outputChannel = vscode.window.createOutputChannel('Copilot Memory');
+    outputChannel = vscode.window.createOutputChannel('Memory Book');
   }
   return outputChannel;
 }

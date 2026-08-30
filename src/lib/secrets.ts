@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import { projectMemoryFileExists, verifyProjectMemoryKey } from './memory-store';
 
 /**
- * Key management for Copilot Memory's two credential-shaped settings
+ * Key management for Memory Book's two credential-shaped settings
  * (the project-memory encryption key and the embedding provider API key).
  *
  * These used to live as plain-string VS Code settings. That's a problem for
@@ -27,21 +27,49 @@ import { projectMemoryFileExists, verifyProjectMemoryKey } from './memory-store'
  *    actually opens the existing file before committing to it.
  */
 
-const EMBEDDING_KEY_SECRET = 'copilotMemory.embeddingApiKey';
-const PROJECT_KEY_SECRET_PREFIX = 'copilotMemory.projectKey.';
+const EMBEDDING_KEY_SECRET = 'memoryBook.embeddingApiKey';
+const PROJECT_KEY_SECRET_PREFIX = 'memoryBook.projectKey.';
+
+// Secret storage keys used before the extension was renamed from Copilot
+// Memory to Memory Book. Read as a one-time migration fallback so nobody
+// who already generated/stored a key under the old name loses access to it
+// just because of the rename - the exact "lost key" failure mode this
+// module exists to prevent in the first place.
+const LEGACY_EMBEDDING_KEY_SECRET = 'copilotMemory.embeddingApiKey';
+const LEGACY_PROJECT_KEY_SECRET_PREFIX = 'copilotMemory.projectKey.';
+
+/**
+ * Reads a secret under its current name, falling back to (and migrating
+ * from) the pre-rename name if the current name has nothing stored yet.
+ */
+async function readSecretWithLegacyFallback(
+  context: vscode.ExtensionContext,
+  currentName: string,
+  legacyName: string,
+): Promise<string | undefined> {
+  const current = await context.secrets.get(currentName);
+  if (current) return current;
+
+  const legacy = await context.secrets.get(legacyName);
+  if (!legacy) return undefined;
+
+  await context.secrets.store(currentName, legacy);
+  await context.secrets.delete(legacyName);
+  return legacy;
+}
 
 export async function resolveEmbeddingApiKey(
   context: vscode.ExtensionContext,
   legacySettingValue: string,
 ): Promise<string> {
-  const stored = await context.secrets.get(EMBEDDING_KEY_SECRET);
+  const stored = await readSecretWithLegacyFallback(context, EMBEDDING_KEY_SECRET, LEGACY_EMBEDDING_KEY_SECRET);
   if (stored) return stored;
 
   if (legacySettingValue) {
     await context.secrets.store(EMBEDDING_KEY_SECRET, legacySettingValue);
     void vscode.window.showWarningMessage(
-      'Copilot Memory: migrated your embedding API key from plain settings into secure storage. ' +
-      'You can now remove copilotMemory.embeddingApiKey from your settings.json.',
+      'Memory Book: migrated your embedding API key from plain settings into secure storage. ' +
+      'You can now remove memoryBook.embeddingApiKey from your settings.json.',
     );
     return legacySettingValue;
   }
@@ -93,14 +121,15 @@ export async function resolveProjectMemoryKey(
   if (explicitKey) return explicitKey;
 
   const secretName = projectKeySecretName(repoContainerTag);
-  const stored = await context.secrets.get(secretName);
+  const legacySecretName = `${LEGACY_PROJECT_KEY_SECRET_PREFIX}${repoContainerTag}`;
+  const stored = await readSecretWithLegacyFallback(context, secretName, legacySecretName);
   if (stored) return stored;
 
   if (projectMemoryFileExists(projectRoot)) {
     throw new Error(
       'This repo already has project memory saved (likely by a teammate), but no key is configured on ' +
-      'this machine. Ask someone who can already read it to run "Copilot Memory: Show Project Memory Key" ' +
-      'and share it with you, then run "Copilot Memory: Set Project Memory Key" and choose "Enter a shared ' +
+      'this machine. Ask someone who can already read it to run "Memory Book: Show Project Memory Key" ' +
+      'and share it with you, then run "Memory Book: Set Project Memory Key" and choose "Enter a shared ' +
       'key". (Generating a new key here would create a second, incompatible key instead of fixing this.)',
     );
   }
@@ -111,14 +140,14 @@ export async function resolveProjectMemoryKey(
   await context.secrets.store(secretName, generated);
 
   void vscode.window.showWarningMessage(
-    'Copilot Memory: no project memory key was configured, so a random key was generated and stored locally ' +
+    'Memory Book: no project memory key was configured, so a random key was generated and stored locally ' +
     'on this machine only. Project memories are still encrypted, but teammates who pull this repo will not be ' +
     'able to decrypt them - and if this machine is the only place the key exists, losing it means losing this ' +
     'repo\'s project memory - until you share it.',
     'Show / Share This Key',
   ).then((choice) => {
     if (choice === 'Show / Share This Key') {
-      void vscode.commands.executeCommand('copilot-memory.showProjectMemoryKey');
+      void vscode.commands.executeCommand('memory-book.showProjectMemoryKey');
     }
   });
 
@@ -133,12 +162,13 @@ export async function resolveProjectMemoryKey(
  */
 export async function showProjectMemoryKey(context: vscode.ExtensionContext, repoContainerTag: string): Promise<void> {
   const secretName = projectKeySecretName(repoContainerTag);
-  const stored = await context.secrets.get(secretName);
+  const legacySecretName = `${LEGACY_PROJECT_KEY_SECRET_PREFIX}${repoContainerTag}`;
+  const stored = await readSecretWithLegacyFallback(context, secretName, legacySecretName);
 
   if (!stored) {
     void vscode.window.showWarningMessage(
       'No project memory key is stored on this machine for this repo. If you\'re relying on ' +
-      'copilotMemory.projectMemoryKey or the COPILOT_MEMORY_KEY environment variable instead, check there.',
+      'memoryBook.projectMemoryKey or the MEMORY_BOOK_KEY environment variable instead, check there.',
     );
     return;
   }

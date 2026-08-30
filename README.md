@@ -1,6 +1,6 @@
-# Copilot Memory
+# Memory Book
 
-Copilot Memory gives GitHub Copilot Chat a memory. Save a note once — a
+Memory Book gives GitHub Copilot Chat a memory. Save a note once — a
 decision, a preference, a "why we did it this way" — and Copilot can recall
 it later, even in a brand-new chat window or the next day.
 
@@ -17,10 +17,10 @@ Think of it as two notebooks:
 1. **Install it.** See [Installing](#installing) below.
 2. **Save something.** Highlight some text in an editor, open the Command
    Palette (`Cmd+Shift+P` on Mac, `Ctrl+Shift+P` on Windows/Linux), and run
-   **`Copilot Memory: Save Selection to Memory`**. Or just tell Copilot Chat
+   **`Memory Book: Save Selection to Memory`**. Or just tell Copilot Chat
    something like *"remember that we use pnpm, not npm, in this repo"* — it
    can save that for you on its own.
-3. **See what's saved.** Run **`Copilot Memory: Show All Memories`** from
+3. **See what's saved.** Run **`Memory Book: Show All Memories`** from
    the Command Palette. That's it — you're using it.
 
 Everything else in this document is detail for when you want it.
@@ -48,7 +48,7 @@ If you'd rather do it by hand:
 npm install        # get the dependencies
 npm run compile     # build it
 npm run vsix        # package it into a .vsix file
-code --install-extension copilot-memory-0.0.3.vsix
+code --install-extension memory-book-0.0.5.vsix
 ```
 
 ---
@@ -66,20 +66,20 @@ menu with the most common ones.
 
 | What you want to do | Command |
 |---|---|
-| Save the text you've highlighted | `Copilot Memory: Save Selection to Memory` |
-| Search your saved notes | `Copilot Memory: Search Memories` |
-| See everything that's saved | `Copilot Memory: Show All Memories` |
-| Delete everything (with confirmation) | `Copilot Memory: Clear All Memories` |
-| Recheck counts / fix a stuck status | `Copilot Memory: Refresh Memory State` |
+| Save the text you've highlighted | `Memory Book: Save Selection to Memory` |
+| Search your saved notes | `Memory Book: Search Memories` |
+| See everything that's saved | `Memory Book: Show All Memories` |
+| Delete everything (with confirmation) | `Memory Book: Clear All Memories` |
+| Recheck counts / fix a stuck status | `Memory Book: Refresh Memory State` |
 
-There's also a **Copilot Memory icon in the left sidebar** (Activity Bar)
+There's also a **Memory Book icon in the left sidebar** (Activity Bar)
 that shows a simple tree of everything saved, split into "Project" and
 "Global".
 
-**Auto-save on file save:** by default, when you save a file, Copilot
-Memory quietly looks for anything that reads like a decision, a rule, or a
+**Auto-save on file save:** by default, when you save a file, Memory Book quietly
+looks for anything that reads like a decision, a rule, or a
 "gotcha" worth remembering, and saves a short note about it automatically.
-You can turn this off in Settings by searching for `Copilot Memory` and
+You can turn this off in Settings by searching for `Memory Book` and
 unchecking `Auto Ingest On Save`.
 
 ---
@@ -94,7 +94,7 @@ unchecking `Auto Ingest On Save`.
   can be checked into git so your teammates see the same notes.
 
 By default, saving without picking a notebook goes into **Project**. You
-can change that default in Settings (`Copilot Memory: Default Save Scope`).
+can change that default in Settings (`Memory Book: Default Save Scope`).
 
 ---
 
@@ -115,7 +115,7 @@ nobody can read it without the right key — see the next section.
 ## Sharing project notes with your team (optional)
 
 If you never plan to share a project with teammates, you can skip this —
-Copilot Memory generates a private key for you automatically and everything
+Memory Book generates a private key for you automatically and everything
 just works locally.
 
 If you **do** want your team to read the same shared notes, treat this
@@ -123,7 +123,7 @@ exactly like sharing a database password or an API key — because that's
 what it is:
 
 1. **Before anyone else touches this project's memory**, one person opens
-   the Command Palette and runs **`Copilot Memory: Set Project Memory Key`**
+   the Command Palette and runs **`Memory Book: Set Project Memory Key`**
    → **"Generate a new key"**. You'll get a random code.
 2. **Immediately save that code somewhere durable** — a team password
    manager entry (1Password, Bitwarden, etc.) is ideal. **Never paste it
@@ -133,7 +133,7 @@ what it is:
    entry, a Slack DM — not email, not a doc that gets shared broadly).
 4. Everyone else on the team runs the same command, but chooses
    **"Enter a shared key"** and pastes in the code from step 1. If they
-   mistype it, Copilot Memory checks the key against the existing project
+   mistype it, Memory Book checks the key against the existing project
    file right away and tells them — it won't let a typo silently create a
    second, broken copy.
 
@@ -141,9 +141,9 @@ Now everyone's copy of the extension locks and unlocks the shared notebook
 with the same key, and it's safe to commit `.copilot-memory/` to the repo.
 
 **If you forgot to save the key**, or a new teammate needs it, anyone whose
-copy of the extension still works can run **`Copilot Memory: Set Project
+copy of the extension still works can run **`Memory Book: Set Project
 Memory Key`** → **"Show the current key"** (or the standalone
-**`Copilot Memory: Show Project Memory Key`** command) to see and re-copy
+**`Memory Book: Show Project Memory Key`** command) to see and re-copy
 it — you don't need to remember it from generation time, as long as at
 least one working copy exists somewhere.
 
@@ -158,7 +158,7 @@ nothing else is affected — your personal global notebook and any other
 project's notebook are encrypted with different keys and are unaffected.
 
 **If someone accidentally generates a second key for a repo that already
-has notes** (skipping step 4 above), Copilot Memory now catches this: it
+has notes** (skipping step 4 above), Memory Book now catches this: it
 won't silently invent a new key for a repo it can already see has existing
 project memory. Instead it'll tell that person to get the real key from a
 teammate via `Show Project Memory Key`, and "Generate a new key" asks for
@@ -169,15 +169,15 @@ confirmation before overwriting an existing setup.
 ## Using an AI-powered ("smart") search (optional, advanced)
 
 By default, search works by matching words — good enough for most people,
-and needs zero setup. If you want Copilot Memory to also understand
+and needs zero setup. If you want Memory Book to also understand
 *meaning*, not just exact words (so searching "auth flow" also finds a note
 about "login process"), you can connect an embedding provider like OpenAI:
 
-1. Open Settings, search for `Copilot Memory`.
+1. Open Settings, search for `Memory Book`.
 2. Set `Embedding Provider` to `openai`.
-3. Run **`Copilot Memory: Set Embedding API Key`** and paste your API key
+3. Run **`Memory Book: Set Embedding API Key`** and paste your API key
    (it's stored securely, not in a plain settings file).
-4. Run **`Copilot Memory: Backfill Embedding Vectors`** once, to catch up
+4. Run **`Memory Book: Backfill Embedding Vectors`** once, to catch up
    anything you saved before turning this on.
 
 This is entirely optional — skip it and everything still works.
@@ -188,14 +188,14 @@ This is entirely optional — skip it and everything still works.
 
 VS Code also ships its own, separate memory feature, which can cause
 Copilot to save/search in two different places without you noticing. To
-make sure it always uses Copilot Memory instead:
+make sure it always uses Memory Book instead:
 
 1. Open Settings (`Cmd+,` / `Ctrl+,`), search for `memory`, and turn off:
    - `Github › Copilot › Chat › Tools: Memory Enabled`
    - `Github › Copilot › Chat: Copilot Memory Enabled`
 2. As a belt-and-braces check: in Copilot Chat, click the **tools icon**
    (wrench) in the chat box, and make sure the built-in "Memory" tool is
-   unchecked while the `copilot-memory_*` tools are checked.
+   unchecked while the `memory-book_*` tools are checked.
 
 ## FAQ / Troubleshooting
 
@@ -203,15 +203,15 @@ make sure it always uses Copilot Memory instead:
 normal?"** Yes — that's `.copilot-memory/project-memory.enc.json`, your
 encrypted project notebook. It's *supposed* to look like nonsense; that's
 the point. To read what's actually in it, don't open the file — run
-`Copilot Memory: Show All Memories` instead, and VS Code will show it to
+`Memory Book: Show All Memories` instead, and VS Code will show it to
 you in plain text.
 
-**"Nothing happens when I save a file."** Check Settings → `Copilot
-Memory` → `Auto Ingest On Save` is turned on, and that the file isn't
+**"Nothing happens when I save a file."** Check Settings → `Memory
+Book` → `Auto Ingest On Save` is turned on, and that the file isn't
 inside an ignored folder (`node_modules`, `.git`, build output, or common
 secret files like `.env` are skipped on purpose).
 
-**"Can Copilot Memory accidentally save a password or API key?"** It tries
+**"Can Memory Book accidentally save a password or API key?"** It tries
 hard not to — lines that look like credentials are skipped or blacked out
 before saving, and common secret files (`.env`, `*.pem`, `*.key`, etc.) are
 never auto-saved. This is a best-effort safety net, not a guarantee, so
@@ -241,29 +241,28 @@ npm run vsix         # package a local .vsix
 
 ### All settings
 
-- `copilotMemory.maxContextItems` (default `5`) — how many memories Copilot
+- `memoryBook.maxContextItems` (default `5`) — how many memories Copilot
   pulls into context per search.
-- `copilotMemory.storageDir` (default: `~/.copilot-memory`) — where the
+- `memoryBook.storageDir` (default: `~/.copilot-memory`) — where the
   global notebook lives.
-- `copilotMemory.projectMemoryKey` — deprecated plain-text fallback for the
+- `memoryBook.projectMemoryKey` — deprecated plain-text fallback for the
   shared key; prefer the `Set Project Memory Key` command instead.
-- `copilotMemory.debug` (default `false`) — verbose logging in the "Copilot
-  Memory" Output panel.
-- `copilotMemory.autoIngestOnSave` (default `true`)
-- `copilotMemory.autoIngestStrategy` (`selective` or `snapshot`, default
+- `memoryBook.debug` (default `false`) — verbose logging in the "Memory Book" Output panel.
+- `memoryBook.autoIngestOnSave` (default `true`)
+- `memoryBook.autoIngestStrategy` (`selective` or `snapshot`, default
   `selective`) — selective saves short insights; snapshot saves a raw
   excerpt of the file.
-- `copilotMemory.autoIngestMaxChars`, `copilotMemory.autoIngestMaxInsights`
-- `copilotMemory.autoIngestIgnoreGlobs` — file patterns never auto-saved;
+- `memoryBook.autoIngestMaxChars`, `memoryBook.autoIngestMaxInsights`
+- `memoryBook.autoIngestIgnoreGlobs` — file patterns never auto-saved;
   common secret files are included by default.
-- `copilotMemory.defaultSaveScope` (`project` or `global`, default
+- `memoryBook.defaultSaveScope` (`project` or `global`, default
   `project`)
-- `copilotMemory.searchMode` (`sparse`, `hybrid-cloud`, `auto`, default
+- `memoryBook.searchMode` (`sparse`, `hybrid-cloud`, `auto`, default
   `auto`) — `sparse` is plain keyword matching; `hybrid-cloud` adds the
   optional AI-powered search described above.
-- `copilotMemory.embeddingProvider`, `embeddingModel`, `embeddingBaseUrl`,
+- `memoryBook.embeddingProvider`, `embeddingModel`, `embeddingBaseUrl`,
   `embeddingDimensions` — advanced, optional AI search config.
-- `copilotMemory.embeddingApiKey` — deprecated plain-text fallback; prefer
+- `memoryBook.embeddingApiKey` — deprecated plain-text fallback; prefer
   `Set Embedding API Key`.
 
 ### Storage internals

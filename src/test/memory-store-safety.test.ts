@@ -13,7 +13,9 @@ test('project memory never falls back to a hardcoded encryption key', () => {
   fs.mkdirSync(globalDir, { recursive: true });
 
   const previousEnvKey = process.env.COPILOT_MEMORY_KEY;
+  const previousNewEnvKey = process.env.MEMORY_BOOK_KEY;
   delete process.env.COPILOT_MEMORY_KEY;
+  delete process.env.MEMORY_BOOK_KEY;
 
   try {
     const store = new MemoryStore(globalDir, repoDir, undefined);
@@ -34,6 +36,7 @@ test('project memory never falls back to a hardcoded encryption key', () => {
     assert.equal(fs.existsSync(path.join(repoDir, '.copilot-memory', 'project-memory.enc.json')), false);
   } finally {
     if (previousEnvKey !== undefined) process.env.COPILOT_MEMORY_KEY = previousEnvKey;
+    if (previousNewEnvKey !== undefined) process.env.MEMORY_BOOK_KEY = previousNewEnvKey;
   }
 });
 

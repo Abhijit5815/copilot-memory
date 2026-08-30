@@ -1,5 +1,7 @@
 # Memory Book
 
+[Install from the VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=AbhijitKasana.memory-book)
+
 Memory Book gives GitHub Copilot Chat a memory. Save a note once — a
 decision, a preference, a "why we did it this way" — and Copilot can recall
 it later, even in a brand-new chat window or the next day.

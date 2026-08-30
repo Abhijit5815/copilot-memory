@@ -6,6 +6,8 @@ import {
   Scope,
 } from './memory-domain';
 import { MemoryStore } from './memory-store';
+import { redactSecrets } from './secret-scan';
+import { debugLog } from './settings';
 
 export interface WorkspaceMemoryContext {
   cwd: string;
@@ -48,18 +50,29 @@ export class MemoryService {
     languageId: string,
     context: WorkspaceMemoryContext,
   ): SaveMemoryResult {
+    // Snapshot strategy stores raw file content verbatim, so unlike the
+    // selective/insight path it can't just skip a line that looks like a
+    // secret - redact it instead, since the caller (auto-ingest on save)
+    // has no other chance to catch it before this becomes a stored memory.
+    const { text: safeContent, redactedCount } = redactSecrets(content);
+    if (redactedCount > 0) {
+      debugLog('Redacted likely secret(s) from file snapshot before saving', { relPath, redactedCount });
+    }
+
     return this.store.save({
       content: [
         `File updated: ${relPath}`,
         `Language: ${languageId}`,
         'Snapshot:',
-        content,
+        safeContent,
       ].join('\n'),
       scope: 'project',
       projectId: getRepoContainerTag(context.cwd),
       projectName: getProjectName(context.cwd),
       type: 'file-snapshot',
-      tags: ['auto-ingest', 'file-save', relPath],
+      tags: redactedCount > 0
+        ? ['auto-ingest', 'file-save', relPath, 'secrets-redacted']
+        : ['auto-ingest', 'file-save', relPath],
     });
   }
 

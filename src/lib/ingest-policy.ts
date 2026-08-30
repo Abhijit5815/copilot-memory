@@ -1,4 +1,5 @@
 import { MemoryType } from './memory-domain';
+import { containsLikelySecret } from './secret-scan';
 
 export interface IngestInsight {
   type: MemoryType;
@@ -50,7 +51,10 @@ export function extractHighSignalInsights(
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line.length >= 12)
-    .filter((line) => !line.startsWith('//') && !line.startsWith('#'));
+    .filter((line) => !line.startsWith('//') && !line.startsWith('#'))
+    // Never turn a line that looks like it contains a live credential into a
+    // stored (and, for project scope, git-committed) memory.
+    .filter((line) => !containsLikelySecret(line));
 
   const seen = new Set<string>();
   const insights: IngestInsight[] = [];

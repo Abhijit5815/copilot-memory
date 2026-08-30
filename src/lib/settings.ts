@@ -15,6 +15,7 @@ export type AutoIngestStrategy = 'selective' | 'snapshot';
 export interface Settings {
   maxContextItems: number;
   storageDir: string;
+  /** @deprecated legacy plain-text fallback; prefer the "Set Project Memory Key" command (SecretStorage). */
   projectMemoryKey: string;
   debug: boolean;
   autoIngestOnSave: boolean;
@@ -25,22 +26,47 @@ export interface Settings {
   defaultSaveScope: 'global' | 'project';
   searchMode: SearchMode;
   embeddingProvider: string;
+  /** @deprecated legacy plain-text fallback; prefer the "Set Embedding API Key" command (SecretStorage). */
   embeddingApiKey: string;
   embeddingModel: string;
   embeddingDimensions: number;
   embeddingBaseUrl: string;
 }
 
+// Files that commonly hold live credentials. Editing/saving one of these
+// never triggers auto-ingest, regardless of strategy, so secrets in them
+// can't end up copied into a memory (and, for project scope, into git).
+const SECRET_FILE_IGNORE_GLOBS = [
+  '**/.env',
+  '**/.env.*',
+  '**/*.pem',
+  '**/*.key',
+  '**/*.p12',
+  '**/*.pfx',
+  '**/id_rsa*',
+  '**/id_ed25519*',
+  '**/*.crt',
+  '**/secrets.*',
+  '**/credentials.*',
+];
+
 const DEFAULT_SETTINGS: Settings = {
   maxContextItems: 5,
   storageDir: '',
-  projectMemoryKey: process.env.COPILOT_MEMORY_KEY || 'demoKey',
+  projectMemoryKey: process.env.COPILOT_MEMORY_KEY || '',
   debug: false,
   autoIngestOnSave: true,
   autoIngestStrategy: 'selective',
   autoIngestMaxChars: 2000,
   autoIngestMaxInsights: 3,
-  autoIngestIgnoreGlobs: ['**/node_modules/**', '**/.git/**', '**/out/**', '**/dist/**', '**/*.lock'],
+  autoIngestIgnoreGlobs: [
+    '**/node_modules/**',
+    '**/.git/**',
+    '**/out/**',
+    '**/dist/**',
+    '**/*.lock',
+    ...SECRET_FILE_IGNORE_GLOBS,
+  ],
   defaultSaveScope: 'project',
   searchMode: 'auto',
   embeddingProvider: 'none',
@@ -59,7 +85,7 @@ export function getSettings(): Settings {
   return {
     maxContextItems: config.get<number>('maxContextItems', DEFAULT_SETTINGS.maxContextItems),
     storageDir: config.get<string>('storageDir', DEFAULT_SETTINGS.storageDir),
-    projectMemoryKey: config.get<string>('projectMemoryKey', process.env.COPILOT_MEMORY_KEY || DEFAULT_SETTINGS.projectMemoryKey || 'demoKey'),
+    projectMemoryKey: config.get<string>('projectMemoryKey', process.env.COPILOT_MEMORY_KEY || DEFAULT_SETTINGS.projectMemoryKey),
     debug: config.get<boolean>('debug', DEFAULT_SETTINGS.debug),
     autoIngestOnSave: config.get<boolean>('autoIngestOnSave', DEFAULT_SETTINGS.autoIngestOnSave),
     autoIngestStrategy: config.get<AutoIngestStrategy>('autoIngestStrategy', DEFAULT_SETTINGS.autoIngestStrategy),

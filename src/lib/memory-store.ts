@@ -16,6 +16,9 @@ const DEFAULT_STORAGE_DIR = path.join(os.homedir(), '.copilot-memory');
 const STORE_FILENAME = 'memory-store.json';
 const PROJECT_STORE_FILENAME = 'project-memory.enc.json';
 const LEGACY_DB_FILENAME = 'memory.db';
+const MAX_CONTENT_LENGTH = 50_000;
+const LOCK_TIMEOUT_MS = 1000;
+const LOCK_SPIN_MS = 2;
 
 export interface FtsResult {
   memory: Memory;
@@ -40,6 +43,8 @@ export class MemoryStore {
   private projectStorePath: string | null;
   private projectMemoryKey: string | null;
   private state: PersistedStore;
+  private globalMtimeMs = 0;
+  private projectMtimeMs = 0;
 
   constructor(storageDir?: string, projectRoot?: string, projectMemoryKey?: string) {
     this.storageDir = storageDir || DEFAULT_STORAGE_DIR;
@@ -47,7 +52,14 @@ export class MemoryStore {
       fs.mkdirSync(this.storageDir, { recursive: true });
     }
 
-    this.projectMemoryKey = projectMemoryKey || process.env.COPILOT_MEMORY_KEY || 'demoKey';
+    // No hardcoded fallback key here: project-scoped memory is encrypted and
+    // intended to be committed to git, so an extension that silently encrypted
+    // with a known default key would make that encryption purely cosmetic.
+    // Callers (see extension.ts / lib/secrets.ts) resolve a real key - either an
+    // explicit team-shared secret or a randomly generated local one - before
+    // constructing a store with a projectRoot.
+    this.projectMemoryKey = projectMemoryKey || process.env.COPILOT_MEMORY_KEY || null;
+
     const repoMemoryDir = projectRoot ? path.join(projectRoot, '.copilot-memory') : null;
     this.projectStorePath = repoMemoryDir ? path.join(repoMemoryDir, PROJECT_STORE_FILENAME) : null;
     if (this.projectStorePath && !fs.existsSync(path.dirname(this.projectStorePath))) {
@@ -56,6 +68,8 @@ export class MemoryStore {
 
     this.storePath = path.join(this.storageDir, STORE_FILENAME);
     this.state = this.loadState();
+    this.globalMtimeMs = fileMtimeMs(this.storePath);
+    this.projectMtimeMs = this.projectStorePath ? fileMtimeMs(this.projectStorePath) : 0;
   }
 
   private loadState(): PersistedStore {
@@ -79,7 +93,19 @@ export class MemoryStore {
     }
 
     const raw = fs.readFileSync(filePath, 'utf8');
-    const parsed = encrypted ? decryptPersistedStore(raw, this.getProjectMemoryKey()) : JSON.parse(raw) as Partial<PersistedStore>;
+    let parsed: Partial<PersistedStore>;
+    try {
+      parsed = encrypted ? decryptPersistedStore(raw, this.getProjectMemoryKey()) : (JSON.parse(raw) as Partial<PersistedStore>);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      throw new Error(
+        `Copilot Memory: failed to load ${scope} memory from ${filePath} (${reason}). ` +
+        (encrypted
+          ? 'This usually means copilotMemory.projectMemoryKey does not match the key the file was encrypted with, or the file is corrupted.'
+          : 'The file may be corrupted.'),
+      );
+    }
+
     const memories = Array.isArray(parsed.memories)
       ? parsed.memories.map(normalizePersistedMemory)
       : [];
@@ -92,6 +118,21 @@ export class MemoryStore {
     };
   }
 
+  /**
+   * Re-reads on-disk state only if a file changed since we last saw it (e.g.
+   * another VS Code window sharing the same store just wrote to it). Cheap
+   * no-op in the common case where nothing changed underneath us.
+   */
+  private reloadIfChanged(): void {
+    const globalChanged = fileMtimeMs(this.storePath) !== this.globalMtimeMs;
+    const projectChanged = this.projectStorePath ? fileMtimeMs(this.projectStorePath) !== this.projectMtimeMs : false;
+    if (!globalChanged && !projectChanged) return;
+
+    this.state = this.loadState();
+    this.globalMtimeMs = fileMtimeMs(this.storePath);
+    this.projectMtimeMs = this.projectStorePath ? fileMtimeMs(this.projectStorePath) : 0;
+  }
+
   private persist(): void {
     const globalState = this.filterStateByScope('global');
     const projectState = this.filterStateByScope('project');
@@ -99,22 +140,24 @@ export class MemoryStore {
     const tempGlobalPath = `${this.storePath}.tmp`;
     fs.writeFileSync(tempGlobalPath, `${JSON.stringify(globalState, null, 2)}\n`, 'utf8');
     fs.renameSync(tempGlobalPath, this.storePath);
+    this.globalMtimeMs = fileMtimeMs(this.storePath);
 
     if (this.projectStorePath) {
       const key = this.getProjectMemoryKey();
-      if (!key) {
-        throw new Error('Project memory encryption key is missing. Set copilotMemory.projectMemoryKey or COPILOT_MEMORY_KEY.');
-      }
       const projectOutput = encryptPersistedStore(projectState, key);
       const tempProjectPath = `${this.projectStorePath}.tmp`;
       fs.writeFileSync(tempProjectPath, `${projectOutput}\n`, 'utf8');
       fs.renameSync(tempProjectPath, this.projectStorePath);
+      this.projectMtimeMs = fileMtimeMs(this.projectStorePath);
     }
   }
 
   private getProjectMemoryKey(): string {
     if (!this.projectMemoryKey) {
-      this.projectMemoryKey = 'demoKey';
+      throw new Error(
+        'Copilot Memory: project memory encryption key is missing. Set copilotMemory.projectMemoryKey, ' +
+        'the COPILOT_MEMORY_KEY environment variable, or run "Copilot Memory: Set Project Memory Key".',
+      );
     }
     return this.projectMemoryKey;
   }
@@ -137,29 +180,22 @@ export class MemoryStore {
     };
   }
 
-  // --- Scope filter builder ---
-
-  private buildScopeFilter(
-    alias: string,
-    scope?: Scope,
-    projectId?: string,
-  ): { sql: string; params: unknown[] } {
-    if (scope && projectId) {
-      return {
-        sql: `AND ${alias}.scope = ? AND ${alias}.project_id = ?`,
-        params: [scope, projectId],
-      };
+  /**
+   * Serializes mutating operations across processes (e.g. two VS Code windows
+   * sharing the same store) using a simple exclusive lockfile, and reloads any
+   * on-disk changes made by another process before applying the mutation - so a
+   * save/delete from one window can never silently clobber one from another.
+   */
+  private withLock<T>(fn: () => T): T {
+    const lockPath = `${this.storePath}.lock`;
+    const fd = acquireLockSync(lockPath, LOCK_TIMEOUT_MS, LOCK_SPIN_MS);
+    try {
+      this.reloadIfChanged();
+      return fn();
+    } finally {
+      try { fs.closeSync(fd); } catch { /* already closed */ }
+      try { fs.unlinkSync(lockPath); } catch { /* already removed */ }
     }
-    if (scope) {
-      return { sql: `AND ${alias}.scope = ?`, params: [scope] };
-    }
-    if (projectId) {
-      return {
-        sql: `AND (${alias}.scope = 'global' OR (${alias}.scope = 'project' AND ${alias}.project_id = ?))`,
-        params: [projectId],
-      };
-    }
-    return { sql: '', params: [] };
   }
 
   // --- CRUD ---
@@ -167,50 +203,55 @@ export class MemoryStore {
   save(input: MemoryInput): SaveMemoryResult {
     const trimmed = input.content.trim();
     if (!trimmed) throw new Error('Memory content cannot be empty');
-
-    const type = input.type ?? 'manual';
-    const contentFingerprint = hashNormalizedContent(trimmed);
-    const duplicate = this.findDuplicate(contentFingerprint, input.scope, input.projectId, type);
-
-    if (duplicate) {
-      const updatedAt = new Date().toISOString();
-      const existing = this.state.memories.find((memory) => memory.id === duplicate.id);
-      if (!existing) throw new Error(`Memory ${duplicate.id} not found`);
-
-      existing.content = trimmed;
-      existing.projectName = input.projectName ?? duplicate.projectName;
-      existing.tags = [...(input.tags ?? duplicate.tags)];
-      existing.updatedAt = updatedAt;
-      this.persist();
-
-      const updated: Memory = {
-        ...duplicate,
-        content: trimmed,
-        projectName: input.projectName ?? duplicate.projectName,
-        tags: input.tags ?? duplicate.tags,
-        updatedAt,
-      };
-
-      debugLog('Memory updated', { id: updated.id, scope: updated.scope, type: updated.type });
-      return { memory: updated, status: 'updated' };
+    if (trimmed.length > MAX_CONTENT_LENGTH) {
+      throw new Error(`Memory content is too long (${trimmed.length} chars). Limit is ${MAX_CONTENT_LENGTH} characters.`);
     }
 
-    const memory: Memory = {
-      id: crypto.randomUUID(),
-      content: trimmed,
-      scope: input.scope,
-      projectId: input.projectId ?? null,
-      projectName: input.projectName ?? null,
-      type,
-      tags: input.tags ?? [],
-      createdAt: new Date().toISOString(),
-      updatedAt: null,
-    };
+    return this.withLock(() => {
+      const type = input.type ?? 'manual';
+      const contentFingerprint = hashNormalizedContent(trimmed);
+      const duplicate = this.findDuplicate(contentFingerprint, input.scope, input.projectId, type);
 
-    this.state.memories.push(memory);
-    this.persist();
-    debugLog('Memory saved', { id: memory.id, scope: memory.scope, type: memory.type });
-    return { memory, status: 'created' };
+      if (duplicate) {
+        const updatedAt = new Date().toISOString();
+        const existing = this.state.memories.find((memory) => memory.id === duplicate.id);
+        if (!existing) throw new Error(`Memory ${duplicate.id} not found`);
+
+        existing.content = trimmed;
+        existing.projectName = input.projectName ?? duplicate.projectName;
+        existing.tags = [...(input.tags ?? duplicate.tags)];
+        existing.updatedAt = updatedAt;
+        this.persist();
+
+        const updated: Memory = {
+          ...duplicate,
+          content: trimmed,
+          projectName: input.projectName ?? duplicate.projectName,
+          tags: input.tags ?? duplicate.tags,
+          updatedAt,
+        };
+
+        debugLog('Memory updated', { id: updated.id, scope: updated.scope, type: updated.type });
+        return { memory: updated, status: 'updated' as const };
+      }
+
+      const memory: Memory = {
+        id: crypto.randomUUID(),
+        content: trimmed,
+        scope: input.scope,
+        projectId: input.projectId ?? null,
+        projectName: input.projectName ?? null,
+        type,
+        tags: input.tags ?? [],
+        createdAt: new Date().toISOString(),
+        updatedAt: null,
+      };
+
+      this.state.memories.push(memory);
+      this.persist();
+      debugLog('Memory saved', { id: memory.id, scope: memory.scope, type: memory.type });
+      return { memory, status: 'created' as const };
+    });
   }
 
   add(input: MemoryInput): Memory {
@@ -242,40 +283,48 @@ export class MemoryStore {
   }
 
   getAll(scope?: Scope, projectId?: string): Memory[] {
+    this.reloadIfChanged();
     return this.filterMemories(scope, projectId)
       .sort(compareByCreatedAtDesc)
       .map(cloneMemory);
   }
 
   delete(id: string): boolean {
-    const before = this.state.memories.length;
-    this.state.memories = this.state.memories.filter((memory) => memory.id !== id);
-    delete this.state.vectors[id];
-    const deleted = this.state.memories.length !== before;
-    if (deleted) this.persist();
-    if (deleted) debugLog('Memory deleted', { id });
-    return deleted;
+    return this.withLock(() => {
+      const before = this.state.memories.length;
+      this.state.memories = this.state.memories.filter((memory) => memory.id !== id);
+      delete this.state.vectors[id];
+      const deleted = this.state.memories.length !== before;
+      if (deleted) this.persist();
+      if (deleted) debugLog('Memory deleted', { id });
+      return deleted;
+    });
   }
 
   clear(scope?: Scope, projectId?: string): number {
-    const toDelete = new Set(this.filterMemories(scope, projectId).map((memory) => memory.id));
-    if (toDelete.size === 0) return 0;
+    return this.withLock(() => {
+      const toDelete = new Set(this.filterMemories(scope, projectId).map((memory) => memory.id));
+      if (toDelete.size === 0) return 0;
 
-    this.state.memories = this.state.memories.filter((memory) => !toDelete.has(memory.id));
-    for (const id of toDelete) {
-      delete this.state.vectors[id];
-    }
-    this.persist();
+      this.state.memories = this.state.memories.filter((memory) => !toDelete.has(memory.id));
+      for (const id of toDelete) {
+        delete this.state.vectors[id];
+      }
+      this.persist();
 
-    const count = toDelete.size;
-    debugLog('Memories cleared', { scope, projectId, count });
-    return count;
+      const count = toDelete.size;
+      debugLog('Memories cleared', { scope, projectId, count });
+      return count;
+    });
   }
 
-  // --- FTS5 Search ---
+  // --- Lightweight in-memory token/prefix search. Despite historical naming
+  // ("ftsSearch"), this is NOT SQLite FTS5 - there is no SQLite dependency in
+  // this extension. It's a small token-overlap scorer; see computeSearchRank. ---
 
   ftsSearch(query: string, scope?: Scope, projectId?: string, limit = 10): FtsResult[] {
     if (!query.trim()) return [];
+    this.reloadIfChanged();
 
     const normalizedQuery = normalizeMemoryContent(query);
     const queryTerms = tokenize(normalizedQuery).filter((term) => term.length > 1);
@@ -295,13 +344,15 @@ export class MemoryStore {
   // --- Vector Storage & Search ---
 
   storeVector(memoryId: string, embedding: Float32Array, model: string): void {
-    this.state.vectors[memoryId] = {
-      embedding: Array.from(embedding),
-      model,
-      dimensions: embedding.length,
-      createdAt: new Date().toISOString(),
-    };
-    this.persist();
+    this.withLock(() => {
+      this.state.vectors[memoryId] = {
+        embedding: Array.from(embedding),
+        model,
+        dimensions: embedding.length,
+        createdAt: new Date().toISOString(),
+      };
+      this.persist();
+    });
   }
 
   vectorSearch(
@@ -310,6 +361,7 @@ export class MemoryStore {
     projectId?: string,
     limit = 10,
   ): VectorResult[] {
+    this.reloadIfChanged();
     const results = this.filterMemories(scope, projectId)
       .map((memory) => {
         const vector = this.state.vectors[memory.id];
@@ -325,6 +377,7 @@ export class MemoryStore {
   }
 
   getUnvectorizedMemories(model: string, limit = 100): Memory[] {
+    this.reloadIfChanged();
     return this.state.memories
       .filter((memory) => this.state.vectors[memory.id]?.model !== model)
       .sort(compareByCreatedAtDesc)
@@ -335,6 +388,7 @@ export class MemoryStore {
   // --- Fingerprint ---
 
   getFingerprint(scope?: Scope, projectId?: string): StoreFingerprint {
+    this.reloadIfChanged();
     const memories = this.filterMemories(scope, projectId);
     if (memories.length === 0) {
       return { version: 'empty', hash: 'empty', count: 0, updatedAt: null };
@@ -357,7 +411,11 @@ export class MemoryStore {
   // --- Lifecycle ---
 
   close(): void {
-    this.persist();
+    try {
+      this.persist();
+    } catch (err) {
+      debugLog('Failed to persist memory store on close', { error: String(err) });
+    }
   }
 
   private filterMemories(scope?: Scope, projectId?: string): Memory[] {
@@ -386,6 +444,35 @@ function createEmptyState(): PersistedStore {
     memories: [],
     vectors: {},
   };
+}
+
+function fileMtimeMs(filePath: string): number {
+  try {
+    return fs.statSync(filePath).mtimeMs;
+  } catch {
+    return 0;
+  }
+}
+
+function acquireLockSync(lockPath: string, timeoutMs: number, spinMs: number): number {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    try {
+      return fs.openSync(lockPath, 'wx');
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+
+      if (Date.now() > deadline) {
+        // A lock left behind by a crashed process. Reclaim it rather than
+        // deadlocking the extension forever.
+        try { fs.unlinkSync(lockPath); } catch { /* already gone */ }
+        continue;
+      }
+
+      const spinUntil = Date.now() + spinMs;
+      while (Date.now() < spinUntil) { /* brief synchronous busy-wait */ }
+    }
+  }
 }
 
 function normalizePersistedMemory(input: Partial<Memory>): Memory {

@@ -24,7 +24,7 @@ echo "→ Building extension..."
 npm run compile
 
 echo "→ Packaging extension..."
-if ! npx @vscode/vsce package --allow-missing-repository; then
+if ! npx @vscode/vsce package; then
 	echo "Packaging failed. Ensure @vscode/vsce can be resolved by npx and try again."
 	exit 1
 fi

@@ -5,6 +5,24 @@
   "version": "0.0.2",
   "publisher": "AbhijitKasana",
   "license": "MIT",
+  "icon": "resources/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Abhijit5815/copilot-memory.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Abhijit5815/copilot-memory/issues"
+  },
+  "homepage": "https://github.com/Abhijit5815/copilot-memory#readme",
+  "keywords": [
+    "copilot",
+    "copilot chat",
+    "memory",
+    "context",
+    "notes",
+    "ai",
+    "productivity"
+  ],
   "engines": {
     "vscode": "^1.96.0"
   },
@@ -139,8 +157,7 @@
       "copilot-memory-container": [
         {
           "id": "copilot-memory-view",
-          "name": "Memories",
-          "icon": "resources/copilot-memory.svg"
+          "name": "Memories"
         }
       ]
     },
@@ -305,7 +322,7 @@
     "test": "npm run compile-tests && node --test out/test/**/*.test.js",
     "package": "npm run check-types && node esbuild.js --production",
     "vscode:prepublish": "npm run package",
-    "vsix": "npx @vscode/vsce package --allow-missing-repository",
+    "vsix": "npx @vscode/vsce package",
     "publish:vsce": "npx @vscode/vsce publish"
   },
   "devDependencies": {

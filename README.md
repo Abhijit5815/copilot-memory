@@ -1,183 +1,273 @@
 # Copilot Memory
 
-Lightweight local memory for GitHub Copilot Chat — local by default, with optional
-encrypted repo-shared project memories and hybrid search.
+Copilot Memory gives GitHub Copilot Chat a memory. Save a note once — a
+decision, a preference, a "why we did it this way" — and Copilot can recall
+it later, even in a brand-new chat window or the next day.
 
-This VS Code extension exposes Language Model Tools and Command Palette
-commands so Copilot (and you) can save, search, list, and manage short
-memories across editing sessions. Global memories are kept in a per-user
-portable JSON store; project-scoped memories are encrypted and can be
-committed to the repository for secure team sharing.
+Think of it as two notebooks:
 
-Key points
-- Local by default: global memories live under `~/.copilot-memory` and are not
-  committed.
-- Repo-shared option: project memories are stored encrypted at
-  `.copilot-memory/project-memory.enc.json` so teams can push/pull them safely
-  — as long as everyone shares the same encryption key (see "Project memory
-  encryption key" below). There is no built-in default key, by design.
-- Credential keys (the project memory key and any embedding provider API key)
-  are stored in your OS's secure credential store via VS Code's Secret
-  Storage API, not in plain settings.
-- Exposes language-model tools for programmatic use inside Copilot chat and
-  commands for interactive use from the Command Palette.
+- A **personal notebook** that follows you everywhere (all your projects).
+- A **shared notebook** that lives inside one specific project, so your
+  whole team can read the same notes.
 
-## What this agent provides
+---
 
-- Language Model Tools (registers `copilot-memory_save`,
-  `copilot-memory_search`, `copilot-memory_list`, `copilot-memory_delete`,
-  `copilot-memory_refresh`) so Copilot can call the extension directly.
-- Command Palette commands:
-  - `Copilot Memory: Save Selection to Memory` — save selected text as a
-    memory.
-  - `Copilot Memory: Search Memories` — keyword search, opens results in a
-    Markdown preview.
-  - `Copilot Memory: Show All Memories` — lists global and project memories.
-  - `Copilot Memory: Clear All Memories` — clear global, project, or both.
-  - `Copilot Memory: Refresh Memory State` — show current counts/fingerprints.
-  - `Copilot Memory: Backfill Embedding Vectors` — generate embeddings for
-    existing memories (requires an embedding provider).
-  - `Copilot Memory: Set Project Memory Key` — configure the shared secret
-    used to encrypt this repo's project memories, stored securely.
-  - `Copilot Memory: Set Embedding API Key` / `Clear Embedding API Key` —
-    configure the embedding provider credential, stored securely.
-- Auto-ingest on save: captures either raw snapshots or a small set of
-  high-signal insights when files are saved (configurable via settings).
-  Lines that look like they contain a live credential are skipped (selective
-  mode) or redacted (snapshot mode) before they're ever stored, and files
-  commonly holding secrets (`.env*`, `*.pem`, `*.key`, `id_rsa*`, etc.) are
-  excluded from auto-ingest by default.
+## Quick start (3 steps)
 
-## Install (developer)
+1. **Install it.** See [Installing](#installing) below.
+2. **Save something.** Highlight some text in an editor, open the Command
+   Palette (`Cmd+Shift+P` on Mac, `Ctrl+Shift+P` on Windows/Linux), and run
+   **`Copilot Memory: Save Selection to Memory`**. Or just tell Copilot Chat
+   something like *"remember that we use pnpm, not npm, in this repo"* — it
+   can save that for you on its own.
+3. **See what's saved.** Run **`Copilot Memory: Show All Memories`** from
+   the Command Palette. That's it — you're using it.
 
-Requirements: Node.js and the `code` CLI on your PATH.
+Everything else in this document is detail for when you want it.
+
+---
+
+## Installing
+
+You'll need [Node.js](https://nodejs.org) and the VS Code `code` command
+installed (VS Code can add this for you: open the Command Palette and run
+`Shell Command: Install 'code' command in PATH`).
+
+Then, from a terminal in this project folder, the easiest path is:
 
 ```bash
-npm install
-# build once
-npm run compile
-# or build/watch during development
-npm run watch
+./install-local.sh
 ```
 
-To run tests:
+This installs dependencies, builds the extension, packages it, and installs
+it into VS Code for you. Restart VS Code afterward.
+
+If you'd rather do it by hand:
 
 ```bash
-npm test
-```
-
-To package a VSIX locally:
-
-```bash
-npm run vsix
-# then install with:
+npm install        # get the dependencies
+npm run compile     # build it
+npm run vsix        # package it into a .vsix file
 code --install-extension copilot-memory-0.0.2.vsix
 ```
 
-To publish to the Marketplace (CI or manual):
+---
 
-1. Login with `npx @vscode/vsce login <publisher>`.
-2. Publish: `npm run publish:vsce`.
+## Everyday use
 
-## Storage and privacy
+You mostly won't need commands at all — just talk to Copilot Chat normally
+("remember X", "what did we decide about Y?") and it will call Copilot
+Memory's tools on its own when it makes sense. The commands below are there
+for when you want to do something directly, without going through chat.
 
-- Global store: `~/.copilot-memory/memory-store.json` (memories + vectors),
-  plain JSON, never committed.
-- Project store (optional): `.copilot-memory/project-memory.enc.json` inside
-  the repo, AES-256-GCM encrypted. Intended to be committed so teammates can
-  share project-scoped memories.
+Open these from the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`), or
+click the little **database icon in the bottom status bar** for a shortcut
+menu with the most common ones.
 
-Note: Because this repo intentionally stores the encrypted project file,
-do not add `.copilot-memory/` to `.gitignore` unless you want to stop
-committing the encrypted project memory file.
+| What you want to do | Command |
+|---|---|
+| Save the text you've highlighted | `Copilot Memory: Save Selection to Memory` |
+| Search your saved notes | `Copilot Memory: Search Memories` |
+| See everything that's saved | `Copilot Memory: Show All Memories` |
+| Delete everything (with confirmation) | `Copilot Memory: Clear All Memories` |
+| Recheck counts / fix a stuck status | `Copilot Memory: Refresh Memory State` |
 
-### Project memory encryption key
+There's also a **Copilot Memory icon in the left sidebar** (Activity Bar)
+that shows a simple tree of everything saved, split into "Project" and
+"Global".
 
-There is **no default encryption key**. The first time a project store is
-created without one configured, Copilot Memory generates a random key and
-stores it locally (this machine only, via Secret Storage) so things keep
-working — but a warning is shown, because that key is *not* shared with your
-team, so teammates who pull the repo won't be able to decrypt it.
+**Auto-save on file save:** by default, when you save a file, Copilot
+Memory quietly looks for anything that reads like a decision, a rule, or a
+"gotcha" worth remembering, and saves a short note about it automatically.
+You can turn this off in Settings by searching for `Copilot Memory` and
+unchecking `Auto Ingest On Save`.
 
-To actually share project memory with a team:
+---
 
-1. One person runs `Copilot Memory: Set Project Memory Key` → "Generate a new
-   key", copies the generated value, and shares it with the team through a
-   secrets manager, password manager, or other out-of-band channel — **never
-   by committing it or pasting it into `settings.json`** (a settings file
-   living in the same repo as the ciphertext defeats the encryption).
-2. Everyone else runs `Copilot Memory: Set Project Memory Key` → "Enter a
-   shared key" and pastes the same value.
+## "Global" vs "Project" — which notebook does this go in?
 
-The legacy `copilotMemory.projectMemoryKey` setting and the
-`COPILOT_MEMORY_KEY` environment variable still work as an explicit override
-(useful for CI or headless use), but prefer the command above for day-to-day
-use since it avoids putting the key in plain settings.
+- **Global** = your personal notebook. Follows you into every project on
+  this computer. Good for things like "I prefer tabs over spaces" or "I
+  always forget this git command."
+- **Project** = the shared notebook for *this one repo*. Good for team
+  knowledge: "we decided to use Postgres, not Mongo, because..." This one
+  can be checked into git so your teammates see the same notes.
 
-## Search modes & embeddings
+By default, saving without picking a notebook goes into **Project**. You
+can change that default in Settings (`Copilot Memory: Default Save Scope`).
 
-- `sparse` — lightweight in-memory token/prefix search only (zero-config).
-  Note: despite some earlier naming in this codebase, this is a hand-rolled
-  scorer, not SQLite FTS5 — there's no SQLite dependency here.
-- `hybrid-cloud` — token search + cloud embeddings (e.g. OpenAI) fused for
-  better relevance.
-- `auto` — uses hybrid if embeddings are configured, otherwise sparse.
+---
 
-Configure the embedding provider and model via settings, and store the API
-key securely with `Copilot Memory: Set Embedding API Key` (the legacy
-`copilotMemory.embeddingApiKey` setting is migrated automatically if set, and
-should then be removed from your settings).
+## Where is my data, really?
 
-## Settings (high level)
+- **Global notebook:** a plain file on your computer at
+  `~/.copilot-memory/memory-store.json`. Never shared, never committed to
+  git.
+- **Project notebook:** a locked (encrypted) file inside the project at
+  `.copilot-memory/project-memory.enc.json`. This one is *meant* to be
+  committed to git, so your team shares it.
 
-- `copilotMemory.maxContextItems` (default: `5`)
-- `copilotMemory.storageDir` (default: `~/.copilot-memory`)
-- `copilotMemory.projectMemoryKey` (deprecated plain-text fallback; prefer the
-  "Set Project Memory Key" command)
-- `copilotMemory.debug` (default: `false`)
-- `copilotMemory.autoIngestOnSave` (default: `true`)
-- `copilotMemory.autoIngestStrategy` (`selective` or `snapshot`, default
-  `selective`)
-- `copilotMemory.autoIngestMaxChars`, `copilotMemory.autoIngestMaxInsights`
-- `copilotMemory.autoIngestIgnoreGlobs` (patterns to skip auto-ingest; secret
-  file patterns are included by default)
-- `copilotMemory.defaultSaveScope` (`project` or `global`)
-- `copilotMemory.searchMode` (`sparse`, `hybrid-cloud`, `auto`)
-- `copilotMemory.embeddingProvider`, `copilotMemory.embeddingModel`, etc.
-  (`copilotMemory.embeddingApiKey` is a deprecated plain-text fallback; prefer
-  the "Set Embedding API Key" command)
+The project file is scrambled (encrypted) so that if it ends up on GitHub,
+nobody can read it without the right key — see the next section.
 
-See the extension settings in VS Code for full descriptions and defaults.
+---
 
-## Known limitations
+## Sharing project notes with your team (optional)
 
-- Two VS Code windows writing to the same store at the same instant are
-  serialized with a lockfile and reconciled on write, but this is a simple
-  file-based mechanism, not a database — very high write concurrency isn't a
-  target use case.
-- Edits to a memory overwrite its previous content; there's no version
-  history or undo for edits or deletes.
-- Auto-ingest secret detection is heuristic/pattern-based, not a full secret
-  scanner — it catches common cases (AWS/OpenAI/GitHub/Slack-style keys,
-  private key blocks, JWTs, obvious `key=`/`password=` assignments) but
-  isn't exhaustive. Keep genuinely sensitive files out of auto-ingest via
-  `autoIngestIgnoreGlobs`, and review project memory before committing it.
+If you never plan to share a project with teammates, you can skip this —
+Copilot Memory generates a private key for you automatically and everything
+just works locally.
 
-## Contributing & notes for maintainers
+If you **do** want your team to read the same shared notes:
 
-- The extension registers tools via the VS Code Language Model Tools API and
-  hooks into file save events for auto-ingest.
-- We intentionally commit the encrypted project store so teammates can share
-  memories; `.copilot-memory/` should not be ignored by default.
+1. One person opens the Command Palette and runs
+   **`Copilot Memory: Set Project Memory Key`** → choose **"Generate a new
+   key"**. You'll get a random code.
+2. Share that code with your team through a private channel — Slack DM, a
+   password manager, 1Password, etc. **Never paste it into a file that gets
+   committed to git** — that would be like locking a door and taping the
+   key to it.
+3. Everyone else on the team runs the same command, but chooses
+   **"Enter a shared key"** and pastes in the code from step 1.
 
-Suggested developer commands:
+Now everyone's copy of the extension locks and unlocks the shared notebook
+with the same key, and it's safe to commit `.copilot-memory/` to the repo.
+
+---
+
+## Using an AI-powered ("smart") search (optional, advanced)
+
+By default, search works by matching words — good enough for most people,
+and needs zero setup. If you want Copilot Memory to also understand
+*meaning*, not just exact words (so searching "auth flow" also finds a note
+about "login process"), you can connect an embedding provider like OpenAI:
+
+1. Open Settings, search for `Copilot Memory`.
+2. Set `Embedding Provider` to `openai`.
+3. Run **`Copilot Memory: Set Embedding API Key`** and paste your API key
+   (it's stored securely, not in a plain settings file).
+4. Run **`Copilot Memory: Backfill Embedding Vectors`** once, to catch up
+   anything you saved before turning this on.
+
+This is entirely optional — skip it and everything still works.
+
+---
+
+## Making sure Copilot uses *this* memory, not VS Code's built-in one
+
+VS Code also ships its own, separate memory feature, which can cause
+Copilot to save/search in two different places without you noticing. To
+make sure it always uses Copilot Memory instead:
+
+1. Open Settings (`Cmd+,` / `Ctrl+,`), search for `memory`, and turn off:
+   - `Github › Copilot › Chat › Tools: Memory Enabled`
+   - `Github › Copilot › Chat: Copilot Memory Enabled`
+2. As a belt-and-braces check: in Copilot Chat, click the **tools icon**
+   (wrench) in the chat box, and make sure the built-in "Memory" tool is
+   unchecked while the `copilot-memory_*` tools are checked.
+
+## FAQ / Troubleshooting
+
+**"I saved something and now see a scrambled-looking JSON file — is that
+normal?"** Yes — that's `.copilot-memory/project-memory.enc.json`, your
+encrypted project notebook. It's *supposed* to look like nonsense; that's
+the point. To read what's actually in it, don't open the file — run
+`Copilot Memory: Show All Memories` instead, and VS Code will show it to
+you in plain text.
+
+**"Nothing happens when I save a file."** Check Settings → `Copilot
+Memory` → `Auto Ingest On Save` is turned on, and that the file isn't
+inside an ignored folder (`node_modules`, `.git`, build output, or common
+secret files like `.env` are skipped on purpose).
+
+**"Can Copilot Memory accidentally save a password or API key?"** It tries
+hard not to — lines that look like credentials are skipped or blacked out
+before saving, and common secret files (`.env`, `*.pem`, `*.key`, etc.) are
+never auto-saved. This is a best-effort safety net, not a guarantee, so
+still glance over `.copilot-memory/` before committing it.
+
+**"I changed the shared key and now I get an error."** That means the
+saved notes were locked with the *old* key. If you have the old key, switch
+back to it. If not, the notes made under the old key can't be recovered —
+only ones saved after switching to the new key will work going forward.
+
+---
+
+## For developers / contributors
+
+<details>
+<summary>Click to expand build, test, and settings reference</summary>
+
+### Build & test
 
 ```bash
-npm run lint    # type-checks via tsc (same as `npm run check-types`)
-npm run compile # build the extension
-npm test        # run tests
-npm run vsix    # package a local VSIX
+npm install
+npm run compile      # build once
+npm run watch        # rebuild on every change
+npm test             # run the test suite
+npm run vsix         # package a local .vsix
 ```
+
+### All settings
+
+- `copilotMemory.maxContextItems` (default `5`) — how many memories Copilot
+  pulls into context per search.
+- `copilotMemory.storageDir` (default: `~/.copilot-memory`) — where the
+  global notebook lives.
+- `copilotMemory.projectMemoryKey` — deprecated plain-text fallback for the
+  shared key; prefer the `Set Project Memory Key` command instead.
+- `copilotMemory.debug` (default `false`) — verbose logging in the "Copilot
+  Memory" Output panel.
+- `copilotMemory.autoIngestOnSave` (default `true`)
+- `copilotMemory.autoIngestStrategy` (`selective` or `snapshot`, default
+  `selective`) — selective saves short insights; snapshot saves a raw
+  excerpt of the file.
+- `copilotMemory.autoIngestMaxChars`, `copilotMemory.autoIngestMaxInsights`
+- `copilotMemory.autoIngestIgnoreGlobs` — file patterns never auto-saved;
+  common secret files are included by default.
+- `copilotMemory.defaultSaveScope` (`project` or `global`, default
+  `project`)
+- `copilotMemory.searchMode` (`sparse`, `hybrid-cloud`, `auto`, default
+  `auto`) — `sparse` is plain keyword matching; `hybrid-cloud` adds the
+  optional AI-powered search described above.
+- `copilotMemory.embeddingProvider`, `embeddingModel`, `embeddingBaseUrl`,
+  `embeddingDimensions` — advanced, optional AI search config.
+- `copilotMemory.embeddingApiKey` — deprecated plain-text fallback; prefer
+  `Set Embedding API Key`.
+
+### Storage internals
+
+- Global store: `~/.copilot-memory/memory-store.json` — plain JSON,
+  memories + any embedding vectors.
+- Project store: `<repo>/.copilot-memory/project-memory.enc.json` —
+  AES-256-GCM encrypted JSON, same shape.
+- Search is a lightweight in-memory token/prefix scorer (not SQLite FTS5,
+  despite some earlier naming in this codebase) with an optional
+  reciprocal-rank-fusion blend against embedding similarity in hybrid mode.
+
+### Known limitations
+
+- Two VS Code windows writing to the same store at the exact same instant
+  are serialized with a simple lockfile and reconciled on write — this is
+  file-based, not a database, so it isn't built for heavy concurrent write
+  load.
+- Editing a memory overwrites its previous content; deleting is permanent.
+  Neither has version history or undo.
+- Secret detection on auto-ingest is pattern-based, not a full scanner —
+  it catches common cases, not everything. Review `.copilot-memory/`
+  before committing it.
+
+### Publishing
+
+1. `npx @vscode/vsce login <publisher>`
+2. `npm run publish:vsce`
+
+CI (`.github/workflows/release.yml`) also publishes automatically on a
+`vX.Y.Z` git tag, given a `VSCE_PAT` repository secret.
+
+</details>
+
+---
 
 ## License
 

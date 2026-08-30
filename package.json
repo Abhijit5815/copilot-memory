@@ -139,7 +139,8 @@
       "copilot-memory-container": [
         {
           "id": "copilot-memory-view",
-          "name": "Memories"
+          "name": "Memories",
+          "icon": "resources/copilot-memory.svg"
         }
       ]
     },

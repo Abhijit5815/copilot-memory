@@ -53,6 +53,7 @@
             "content"
           ]
         },
+        "toolReferenceName": "copilot_memory_save",
         "canBeReferencedInPrompt": true
       },
       {
@@ -71,6 +72,7 @@
             "query"
           ]
         },
+        "toolReferenceName": "copilot_memory_search",
         "canBeReferencedInPrompt": true
       },
       {
@@ -90,6 +92,7 @@
             }
           }
         },
+        "toolReferenceName": "copilot_memory_list",
         "canBeReferencedInPrompt": true
       },
       {
@@ -108,6 +111,7 @@
             "id"
           ]
         },
+        "toolReferenceName": "copilot_memory_delete",
         "canBeReferencedInPrompt": true
       },
       {
@@ -118,9 +122,27 @@
           "type": "object",
           "properties": {}
         },
+        "toolReferenceName": "copilot_memory_refresh",
         "canBeReferencedInPrompt": true
       }
     ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "copilot-memory-container",
+          "title": "Copilot Memory",
+          "icon": "resources/copilot-memory.svg"
+        }
+      ]
+    },
+    "views": {
+      "copilot-memory-container": [
+        {
+          "id": "copilot-memory-view",
+          "name": "Memories"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "copilot-memory.saveSelection",
@@ -141,6 +163,10 @@
       {
         "command": "copilot-memory.refresh",
         "title": "Copilot Memory: Refresh Memory State"
+      },
+      {
+        "command": "copilot-memory.quickActions",
+        "title": "Copilot Memory: Quick Actions"
       },
       {
         "command": "copilot-memory.backfillVectors",

@@ -26,6 +26,27 @@ export function activate(context: vscode.ExtensionContext) {
 
   const searchEngine = new SearchEngine(store, embeddingProvider);
   const memoryService = new MemoryService(store);
+  const memoryStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+  memoryStatusBarItem.command = 'copilot-memory.quickActions';
+  memoryStatusBarItem.tooltip = 'Copilot Memory';
+  context.subscriptions.push(memoryStatusBarItem);
+
+  const memoryTreeProvider = new MemoryTreeProvider(store);
+  context.subscriptions.push(vscode.window.registerTreeDataProvider('copilot-memory-view', memoryTreeProvider));
+  context.subscriptions.push(
+    vscode.commands.registerCommand('copilot-memory.refreshView', () => {
+      memoryTreeProvider.refresh();
+      updateMemoryStatusBar(memoryStatusBarItem, store);
+    }),
+  );
+
+  const onboardingKey = 'copilot-memory.onboarded-v1';
+  if (!context.globalState.get(onboardingKey, false)) {
+    void showMemoryOnboarding(context, store, memoryService);
+    void context.globalState.update(onboardingKey, true);
+  }
+
+  updateMemoryStatusBar(memoryStatusBarItem, store);
 
   // --- Language Model Tools ---
 
@@ -42,6 +63,35 @@ export function activate(context: vscode.ExtensionContext) {
   // --- Command Palette ---
 
   context.subscriptions.push(
+    vscode.commands.registerCommand('copilot-memory.quickActions', async () => {
+      const action = await vscode.window.showQuickPick([
+        { label: '$(search) Search memories', description: 'Find relevant stored context', action: 'search' },
+        { label: '$(save) Save selection to memory', description: 'Remember the current selected text', action: 'saveSelection' },
+        { label: '$(list-unordered) Show all memories', description: 'Open your global and project memory list', action: 'showAll' },
+        { label: '$(refresh) Refresh memory state', description: 'Refresh counts and fingerprints', action: 'refresh' },
+      ], {
+        placeHolder: 'Copilot Memory quick actions',
+      });
+
+      if (!action) return;
+
+      switch (action.action) {
+        case 'search':
+          await vscode.commands.executeCommand('copilot-memory.search');
+          break;
+        case 'saveSelection':
+          await vscode.commands.executeCommand('copilot-memory.saveSelection');
+          break;
+        case 'showAll':
+          await vscode.commands.executeCommand('copilot-memory.showAll');
+          break;
+        case 'refresh':
+          await vscode.commands.executeCommand('copilot-memory.refresh');
+          break;
+      }
+
+      updateMemoryStatusBar(memoryStatusBarItem, store);
+    }),
     vscode.commands.registerCommand('copilot-memory.saveSelection', async () => {
       const editor = vscode.window.activeTextEditor;
       if (!editor) return vscode.window.showWarningMessage('No active editor.');
@@ -57,8 +107,8 @@ export function activate(context: vscode.ExtensionContext) {
         type: 'manual',
       }, { cwd });
       const verb = result.status === 'created' ? 'saved' : 'updated';
-      vscode.window.showInformationMessage(`Memory ${verb} in ${scope} (${getProjectName(cwd)})`);
-    }),
+      vscode.window.showInformationMessage(`Memory ${verb} in ${scope} (${getProjectName(cwd)})`);      memoryTreeProvider.refresh();
+      updateMemoryStatusBar(memoryStatusBarItem, store);    }),
   );
 
   context.subscriptions.push(
@@ -88,6 +138,7 @@ export function activate(context: vscode.ExtensionContext) {
         language: 'markdown',
       });
       await vscode.window.showTextDocument(doc, { preview: true });
+      memoryTreeProvider.refresh();
     }),
   );
 
@@ -132,6 +183,8 @@ export function activate(context: vscode.ExtensionContext) {
       if (choice !== 'Clear Project') cleared += store.clear('global');
       if (choice !== 'Clear Global') cleared += store.clear('project', projectId);
       vscode.window.showInformationMessage(`Cleared ${cleared} memories.`);
+      memoryTreeProvider.refresh();
+      updateMemoryStatusBar(memoryStatusBarItem, store);
     }),
   );
 
@@ -143,6 +196,8 @@ export function activate(context: vscode.ExtensionContext) {
       const projectFp = store.getFingerprint('project', projectId);
       const message = `Memory refreshed. global: ${globalFp.count} items, project: ${projectFp.count} items`;
       debugLog('Manual memory refresh', { globalFp, projectFp });
+      memoryTreeProvider.refresh();
+      updateMemoryStatusBar(memoryStatusBarItem, store);
       vscode.window.showInformationMessage(message);
     }),
   );
@@ -163,6 +218,109 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate() {}
+
+function updateMemoryStatusBar(statusBarItem: vscode.StatusBarItem, store: MemoryStore): void {
+  const cwd = getWorkspaceCwd();
+  const projectId = getRepoContainerTag(cwd);
+  const globalCount = store.getAll('global').length;
+  const projectCount = store.getAll('project', projectId).length;
+
+  statusBarItem.text = `$(database) Memory ${globalCount + projectCount}`;
+  statusBarItem.tooltip = `Copilot Memory\nGlobal: ${globalCount}\nProject: ${projectCount}`;
+  statusBarItem.show();
+}
+
+class MemoryTreeProvider implements vscode.TreeDataProvider<MemoryTreeItem> {
+  private readonly onDidChangeTreeDataEmitter = new vscode.EventEmitter<MemoryTreeItem | undefined | null | void>();
+  readonly onDidChangeTreeData = this.onDidChangeTreeDataEmitter.event;
+
+  constructor(private readonly store: MemoryStore) {}
+
+  refresh(): void {
+    this.onDidChangeTreeDataEmitter.fire();
+  }
+
+  getChildren(element?: MemoryTreeItem): vscode.ProviderResult<MemoryTreeItem[]> {
+    const cwd = getWorkspaceCwd();
+    const projectId = getRepoContainerTag(cwd);
+
+    if (!element) {
+      const groups: MemoryTreeItem[] = [
+        new MemoryTreeItem('Project Memory', 'group', undefined, 'project'),
+        new MemoryTreeItem('Global Memory', 'group', undefined, 'global'),
+      ];
+      return groups;
+    }
+
+    if (element.contextValue === 'project') {
+      return this.store.getAll('project', projectId).slice(0, 20).map(memory =>
+        new MemoryTreeItem(memory.content, 'memory', memory, 'projectMemory'));
+    }
+
+    if (element.contextValue === 'global') {
+      return this.store.getAll('global').slice(0, 20).map(memory =>
+        new MemoryTreeItem(memory.content, 'memory', memory, 'globalMemory'));
+    }
+
+    return [];
+  }
+
+  getTreeItem(element: MemoryTreeItem): vscode.TreeItem {
+    const item = new vscode.TreeItem(
+      element.label,
+      element.children ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None,
+    );
+
+    if (element.contextValue === 'project' || element.contextValue === 'global') {
+      const count = element.contextValue === 'project'
+        ? this.store.getAll('project', getRepoContainerTag(getWorkspaceCwd())).length
+        : this.store.getAll('global').length;
+      item.description = `${count}`;
+    }
+
+    if (element.contextValue === 'projectMemory' || element.contextValue === 'globalMemory') {
+      item.description = element.memory?.type || 'memory';
+      item.tooltip = element.memory?.content || '';
+      item.command = {
+        command: 'copilot-memory.showAll',
+        title: 'Open memory list',
+      };
+    }
+
+    return item;
+  }
+}
+
+class MemoryTreeItem {
+  constructor(
+    public readonly label: string,
+    public readonly type: 'group' | 'memory',
+    public readonly memory?: Memory,
+    public readonly contextValue?: string,
+  ) {}
+
+  get children(): boolean {
+    return this.type === 'group';
+  }
+}
+
+async function showMemoryOnboarding(
+  context: vscode.ExtensionContext,
+  _store: MemoryStore,
+  _memoryService: MemoryService,
+): Promise<void> {
+  const choice = await vscode.window.showInformationMessage(
+    'Copilot Memory is ready. Save useful context, then search it later from memory or chat.',
+    'Open Quick Actions',
+    'Save Selection',
+  );
+
+  if (choice === 'Open Quick Actions') {
+    await vscode.commands.executeCommand('copilot-memory.quickActions');
+  } else if (choice === 'Save Selection') {
+    await vscode.commands.executeCommand('copilot-memory.saveSelection');
+  }
+}
 
 function getWorkspaceCwd(): string {
   return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();

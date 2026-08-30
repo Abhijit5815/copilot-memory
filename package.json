@@ -2,7 +2,7 @@
   "name": "memory-book",
   "displayName": "Memory Book",
   "description": "Persistent local memory for GitHub Copilot Chat across sessions",
-  "version": "0.0.5",
+  "version": "0.0.1",
   "publisher": "AbhijitKasana",
   "license": "MIT",
   "icon": "resources/icon.png",

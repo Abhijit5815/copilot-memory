@@ -48,7 +48,7 @@ If you'd rather do it by hand:
 npm install        # get the dependencies
 npm run compile     # build it
 npm run vsix        # package it into a .vsix file
-code --install-extension memory-book-0.0.5.vsix
+code --install-extension memory-book-0.0.1.vsix
 ```
 
 ---

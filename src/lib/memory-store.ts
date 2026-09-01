@@ -12,7 +12,7 @@ import {
 } from './memory-domain';
 import { debugLog } from './settings';
 
-const DEFAULT_STORAGE_DIR = path.join(os.homedir(), '.copilot-memory');
+const DEFAULT_STORAGE_DIR = path.join(os.homedir(), '.memory-book');
 const STORE_FILENAME = 'memory-store.json';
 const PROJECT_STORE_FILENAME = 'project-memory.enc.json';
 const LEGACY_DB_FILENAME = 'memory.db';
@@ -60,7 +60,7 @@ export class MemoryStore {
     // constructing a store with a projectRoot.
     this.projectMemoryKey = projectMemoryKey || process.env.MEMORY_BOOK_KEY || process.env.COPILOT_MEMORY_KEY || null;
 
-    const repoMemoryDir = projectRoot ? path.join(projectRoot, '.copilot-memory') : null;
+    const repoMemoryDir = projectRoot ? path.join(projectRoot, '.memory-book') : null;
     this.projectStorePath = repoMemoryDir ? path.join(repoMemoryDir, PROJECT_STORE_FILENAME) : null;
     if (this.projectStorePath && !fs.existsSync(path.dirname(this.projectStorePath))) {
       fs.mkdirSync(path.dirname(this.projectStorePath), { recursive: true });
@@ -485,7 +485,7 @@ export class MemoryStore {
 
 /** Path to this repo's encrypted project-memory file, without requiring a MemoryStore instance. */
 export function projectMemoryFilePath(projectRoot: string): string {
-  return path.join(projectRoot, '.copilot-memory', PROJECT_STORE_FILENAME);
+  return path.join(projectRoot, '.memory-book', PROJECT_STORE_FILENAME);
 }
 
 /**

@@ -2,7 +2,7 @@
   "name": "memory-book",
   "displayName": "Memory Book",
   "description": "Persistent local memory for GitHub Copilot Chat across sessions",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "AbhijitKasana",
   "license": "MIT",
   "icon": "resources/icon.png",
@@ -224,7 +224,7 @@
         "memoryBook.storageDir": {
           "type": "string",
           "default": "",
-          "description": "Custom storage directory (default: ~/.copilot-memory)"
+          "description": "Custom storage directory (default: ~/.memory-book)"
         },
         "memoryBook.projectMemoryKey": {
           "type": "string",

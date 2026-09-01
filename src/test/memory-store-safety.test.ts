@@ -33,7 +33,7 @@ test('project memory never falls back to a hardcoded encryption key', () => {
 
     // No project store file should exist - the extension must fail loudly
     // rather than silently encrypting with a well-known default.
-    assert.equal(fs.existsSync(path.join(repoDir, '.copilot-memory', 'project-memory.enc.json')), false);
+    assert.equal(fs.existsSync(path.join(repoDir, '.memory-book', 'project-memory.enc.json')), false);
   } finally {
     if (previousEnvKey !== undefined) process.env.COPILOT_MEMORY_KEY = previousEnvKey;
     if (previousNewEnvKey !== undefined) process.env.MEMORY_BOOK_KEY = previousNewEnvKey;

@@ -2,6 +2,19 @@
 
 All notable changes to Memory Book are documented here.
 
+## 0.0.2
+
+- Renamed the on-disk storage folder from `.copilot-memory/` to
+  `.memory-book/` (both `~/.memory-book/` and `<repo>/.memory-book/`) —
+  the previous name was a leftover from before the extension was renamed.
+  No migration: this project has no installs yet, so there's no existing
+  data to carry over.
+- Status bar now shows a book icon instead of a generic database icon.
+- Fixed a couple of remaining "Copilot Memory" mentions missed in the
+  0.0.1 rename: `.vscodeignore`'s vsix-exclude pattern (was silently
+  matching nothing), the `LICENSE` copyright line, and a CI artifact
+  label in `release.yml`.
+
 ## 0.0.1 — Initial release
 
 First public release. This project was originally prototyped under the

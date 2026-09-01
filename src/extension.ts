@@ -341,7 +341,7 @@ function updateMemoryStatusBar(statusBarItem: vscode.StatusBarItem, store: Memor
   const globalCount = store.getAll('global').length;
   const projectCount = store.getAll('project', projectId).length;
 
-  statusBarItem.text = `$(database) Memory ${globalCount + projectCount}`;
+  statusBarItem.text = `$(book) Memory ${globalCount + projectCount}`;
   statusBarItem.tooltip = `Memory Book\nGlobal: ${globalCount}\nProject: ${projectCount}`;
   statusBarItem.show();
 }

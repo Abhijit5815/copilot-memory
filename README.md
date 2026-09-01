@@ -50,7 +50,7 @@ If you'd rather do it by hand:
 npm install        # get the dependencies
 npm run compile     # build it
 npm run vsix        # package it into a .vsix file
-code --install-extension memory-book-0.0.1.vsix
+code --install-extension memory-book-0.0.2.vsix
 ```
 
 ---
@@ -103,10 +103,10 @@ can change that default in Settings (`Memory Book: Default Save Scope`).
 ## Where is my data, really?
 
 - **Global notebook:** a plain file on your computer at
-  `~/.copilot-memory/memory-store.json`. Never shared, never committed to
+  `~/.memory-book/memory-store.json`. Never shared, never committed to
   git.
 - **Project notebook:** a locked (encrypted) file inside the project at
-  `.copilot-memory/project-memory.enc.json`. This one is *meant* to be
+  `.memory-book/project-memory.enc.json`. This one is *meant* to be
   committed to git, so your team shares it.
 
 The project file is scrambled (encrypted) so that if it ends up on GitHub,
@@ -140,7 +140,7 @@ what it is:
    second, broken copy.
 
 Now everyone's copy of the extension locks and unlocks the shared notebook
-with the same key, and it's safe to commit `.copilot-memory/` to the repo.
+with the same key, and it's safe to commit `.memory-book/` to the repo.
 
 **If you forgot to save the key**, or a new teammate needs it, anyone whose
 copy of the extension still works can run **`Memory Book: Set Project
@@ -202,7 +202,7 @@ make sure it always uses Memory Book instead:
 ## FAQ / Troubleshooting
 
 **"I saved something and now see a scrambled-looking JSON file — is that
-normal?"** Yes — that's `.copilot-memory/project-memory.enc.json`, your
+normal?"** Yes — that's `.memory-book/project-memory.enc.json`, your
 encrypted project notebook. It's *supposed* to look like nonsense; that's
 the point. To read what's actually in it, don't open the file — run
 `Memory Book: Show All Memories` instead, and VS Code will show it to
@@ -217,7 +217,7 @@ secret files like `.env` are skipped on purpose).
 hard not to — lines that look like credentials are skipped or blacked out
 before saving, and common secret files (`.env`, `*.pem`, `*.key`, etc.) are
 never auto-saved. This is a best-effort safety net, not a guarantee, so
-still glance over `.copilot-memory/` before committing it.
+still glance over `.memory-book/` before committing it.
 
 **"I changed the shared key and now I get an error."** That means the
 saved notes were locked with the *old* key. If you have the old key, switch
@@ -245,7 +245,7 @@ npm run vsix         # package a local .vsix
 
 - `memoryBook.maxContextItems` (default `5`) — how many memories Copilot
   pulls into context per search.
-- `memoryBook.storageDir` (default: `~/.copilot-memory`) — where the
+- `memoryBook.storageDir` (default: `~/.memory-book`) — where the
   global notebook lives.
 - `memoryBook.projectMemoryKey` — deprecated plain-text fallback for the
   shared key; prefer the `Set Project Memory Key` command instead.
@@ -269,9 +269,9 @@ npm run vsix         # package a local .vsix
 
 ### Storage internals
 
-- Global store: `~/.copilot-memory/memory-store.json` — plain JSON,
+- Global store: `~/.memory-book/memory-store.json` — plain JSON,
   memories + any embedding vectors.
-- Project store: `<repo>/.copilot-memory/project-memory.enc.json` —
+- Project store: `<repo>/.memory-book/project-memory.enc.json` —
   AES-256-GCM encrypted JSON, same shape.
 - Search is a lightweight in-memory token/prefix scorer (not SQLite FTS5,
   despite some earlier naming in this codebase) with an optional
@@ -286,7 +286,7 @@ npm run vsix         # package a local .vsix
 - Editing a memory overwrites its previous content; deleting is permanent.
   Neither has version history or undo.
 - Secret detection on auto-ingest is pattern-based, not a full scanner —
-  it catches common cases, not everything. Review `.copilot-memory/`
+  it catches common cases, not everything. Review `.memory-book/`
   before committing it.
 
 ### Publishing

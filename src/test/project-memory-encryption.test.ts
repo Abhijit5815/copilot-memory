@@ -27,7 +27,7 @@ test('project memories are encrypted and stored in the repo-scoped memory direct
 
   assert.equal(result.status, 'created');
 
-  const projectFile = path.join(repoDir, '.copilot-memory', 'project-memory.enc.json');
+  const projectFile = path.join(repoDir, '.memory-book', 'project-memory.enc.json');
   assert.ok(fs.existsSync(projectFile));
 
   const raw = fs.readFileSync(projectFile, 'utf8');

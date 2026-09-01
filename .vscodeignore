@@ -11,7 +11,7 @@ esbuild.js
 out/**
 install-local.sh
 package-lock.json
-copilot-memory-*.vsix
+memory-book-*.vsix
 node_modules/**
 
 # Exclude non-runtime files from shipped dependencies.
